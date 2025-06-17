@@ -1366,7 +1366,7 @@ async def upload_document(
         folder_name = f"documents/{document_type}"
         upload_result = await upload_file_with_fallback(file, folder_name, "auto")
         
-        # Save document record
+        # Save document record with automatic acceptance for students
         document_data = {
             "id": str(uuid.uuid4()),
             "user_id": current_user["id"],
@@ -1375,8 +1375,8 @@ async def upload_document(
             "file_name": file.filename,
             "file_size": upload_result["file_size"],
             "upload_date": datetime.utcnow(),
-            "is_verified": False,
-            "status": "pending",
+            "is_verified": True,  # Auto-accept for new simplified workflow
+            "status": "accepted",  # Auto-accept for new simplified workflow
             "refusal_reason": None
         }
         
@@ -1394,12 +1394,37 @@ async def upload_document(
         else:
             await db.documents.insert_one(document_data)
         
-        # Check if all required documents are uploaded and update enrollment status
+        # Check if all required documents are uploaded and update enrollment status automatically
         if current_user["role"] == "student":
-            # NOTE: Enrollment status should NOT be updated here
-            # Status should only change when documents are ACCEPTED by manager, not just uploaded
-            # The document acceptance logic handles the status transition properly
-            pass
+            # Check if all required documents are now uploaded
+            documents_complete = await check_user_documents_complete_enhanced(current_user["id"], "student")
+            
+            if documents_complete:
+                # Update all enrollments with pending_documents status to pending_approval
+                await db.enrollments.update_many(
+                    {
+                        "student_id": current_user["id"],
+                        "enrollment_status": EnrollmentStatus.PENDING_DOCUMENTS
+                    },
+                    {
+                        "$set": {
+                            "enrollment_status": EnrollmentStatus.PENDING_APPROVAL,
+                            "documents_completed_at": datetime.utcnow()
+                        }
+                    }
+                )
+                
+                # Send notification
+                notification_doc = {
+                    "id": str(uuid.uuid4()),
+                    "user_id": current_user["id"],
+                    "type": "documents_completed",
+                    "title": "Documents Completed",
+                    "message": "All required documents have been uploaded. Your enrollment is now ready for manager approval.",
+                    "is_read": False,
+                    "created_at": datetime.utcnow()
+                }
+                await db.notifications.insert_one(notification_doc)
         
         return {
             "message": "Document uploaded successfully",
