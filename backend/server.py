@@ -1396,33 +1396,10 @@ async def upload_document(
         
         # Check if all required documents are uploaded and update enrollment status
         if current_user["role"] == "student":
-            # First check if all required documents are uploaded (not necessarily accepted)
-            required_docs = REQUIRED_DOCUMENTS.get("student", [])
-            all_documents = await db.documents.find({"user_id": current_user["id"]}).to_list(length=None)
-            uploaded_types = {doc["document_type"] for doc in all_documents}
-            required_types = {doc.value for doc in required_docs}
-            
-            # If all required documents are uploaded, move to pending_approval
-            if required_types.issubset(uploaded_types):
-                await db.enrollments.update_many(
-                    {
-                        "student_id": current_user["id"],
-                        "enrollment_status": EnrollmentStatus.PENDING_DOCUMENTS
-                    },
-                    {"$set": {"enrollment_status": EnrollmentStatus.PENDING_APPROVAL}}
-                )
-                
-                # Create notification for the student
-                notification_doc = {
-                    "id": str(uuid.uuid4()),
-                    "user_id": current_user["id"],
-                    "type": "documents_uploaded",
-                    "title": "Documents Uploaded Successfully",
-                    "message": "All required documents have been uploaded. Your enrollment is now pending manager approval.",
-                    "is_read": False,
-                    "created_at": datetime.utcnow()
-                }
-                await db.notifications.insert_one(notification_doc)
+            # NOTE: Enrollment status should NOT be updated here
+            # Status should only change when documents are ACCEPTED by manager, not just uploaded
+            # The document acceptance logic handles the status transition properly
+            pass
         
         return {
             "message": "Document uploaded successfully",
