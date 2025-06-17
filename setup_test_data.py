@@ -84,7 +84,7 @@ def setup_test_data():
     school_response = requests.post(f"{BASE_URL}/driving-schools", 
                                    json=school_data, headers=manager_headers)
     if school_response.status_code == 200:
-        school_id = school_response.json()['driving_school']['id']
+        school_id = school_response.json()['id']
         print(f"✅ Driving school created: {school_id}")
     else:
         print(f"❌ Driving school creation failed: {school_response.text}")
