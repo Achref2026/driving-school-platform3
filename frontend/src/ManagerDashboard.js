@@ -1587,14 +1587,8 @@ const ManagerDashboard = ({ user, token }) => {
                                 <h6 className="card-title text-capitalize">
                                   {document.document_type.replace('_', ' ')}
                                 </h6>
-                                <span className={`badge ${
-                                  document.status === 'accepted' ? 'bg-success' : 
-                                  document.status === 'refused' ? 'bg-danger' : 
-                                  'bg-warning'
-                                }`}>
-                                  {document.status === 'accepted' ? 'Accepted' : 
-                                   document.status === 'refused' ? 'Refused' : 
-                                   'Pending'}
+                                <span className="badge bg-success">
+                                  ✓ Uploaded
                                 </span>
                               </div>
                               
@@ -1608,57 +1602,16 @@ const ManagerDashboard = ({ user, token }) => {
                                 Uploaded: {new Date(document.upload_date).toLocaleDateString()}
                               </p>
                               
-                              {document.status === 'refused' && document.refusal_reason && (
-                                <div className="alert alert-danger alert-sm p-2 mb-3">
-                                  <small>
-                                    <strong>Refusal Reason:</strong> {document.refusal_reason}
-                                  </small>
-                                </div>
-                              )}
-                              
                               <div className="document-actions">
                                 {document.file_url && (
                                   <a
                                     href={document.file_url}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="btn btn-primary btn-sm me-2 mb-2"
+                                    className="btn btn-primary btn-sm"
                                   >
-                                    <i className="fas fa-eye me-1"></i>View
+                                    <i className="fas fa-eye me-1"></i>View Document
                                   </a>
-                                )}
-                                
-                                {document.status === 'pending' && (
-                                  <div className="d-flex gap-2">
-                                    <button 
-                                      onClick={() => handleAcceptDocument(document.id)}
-                                      className="btn btn-success btn-sm"
-                                    >
-                                      <i className="fas fa-check me-1"></i>Accept
-                                    </button>
-                                    <button 
-                                      onClick={() => handleRefuseDocument(document)}
-                                      className="btn btn-danger btn-sm"
-                                    >
-                                      <i className="fas fa-times me-1"></i>Refuse
-                                    </button>
-                                  </div>
-                                )}
-                                
-                                {document.status === 'accepted' && (
-                                  <small className="text-success">
-                                    <i className="fas fa-check-circle me-1"></i>
-                                    Document accepted
-                                  </small>
-                                )}
-                                
-                                {document.status === 'refused' && (
-                                  <button 
-                                    onClick={() => handleAcceptDocument(document.id)}
-                                    className="btn btn-success btn-sm"
-                                  >
-                                    <i className="fas fa-check me-1"></i>Accept Now
-                                  </button>
                                 )}
                               </div>
                             </div>
@@ -1668,7 +1621,7 @@ const ManagerDashboard = ({ user, token }) => {
                     </div>
                   ) : (
                     <div className="text-center py-4">
-                      <i className="fas fa-file-alt fa-3x text-muted mb-3"></i>
+                      <i className="fas fa-file-upload fa-3x text-muted mb-3"></i>
                       <p className="text-muted">No documents uploaded yet</p>
                     </div>
                   )}
