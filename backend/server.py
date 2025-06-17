@@ -4840,6 +4840,94 @@ async def add_teacher_enhanced(
     return serialize_doc(teacher)
 
 # Include the API router
+# NEW APPROVAL SYSTEM: Student endpoint to view enrollment status and rejection reasons
+@api_router.get("/student/enrollment-status")
+async def get_student_enrollment_status(
+    current_user = Depends(get_current_user)
+):
+    """Get student's enrollment status including any rejection reasons"""
+    try:
+        if current_user["role"] != "student":
+            raise HTTPException(status_code=403, detail="Only students can view their enrollment status")
+        
+        # Get all enrollments for this student
+        enrollments_cursor = db.enrollments.find({"student_id": current_user["id"]}).sort("created_at", -1)
+        enrollments = await enrollments_cursor.to_list(length=None)
+        
+        enrollment_statuses = []
+        for enrollment in enrollments:
+            # Get school info
+            school = await db.driving_schools.find_one({"id": enrollment["driving_school_id"]})
+            if not school:
+                continue
+            
+            # Get rejection details if rejected
+            rejection_details = None
+            if enrollment["enrollment_status"] == "rejected":
+                rejection_details = {
+                    "reason": enrollment.get("rejection_reason", "No reason provided"),
+                    "rejected_at": enrollment.get("rejected_at").isoformat() if enrollment.get("rejected_at") else None,
+                    "rejected_by_manager": True
+                }
+            
+            # Get document status summary
+            documents_cursor = db.documents.find({"user_id": current_user["id"]})
+            documents = await documents_cursor.to_list(length=None)
+            
+            required_docs = REQUIRED_DOCUMENTS.get("student", [])
+            required_types = {doc.value for doc in required_docs}
+            
+            document_summary = {
+                "total_required": len(required_types),
+                "total_uploaded": 0,
+                "total_accepted": 0,
+                "total_refused": 0,
+                "refused_documents": []
+            }
+            
+            uploaded_types = set()
+            for doc in documents:
+                if doc["document_type"] in required_types:
+                    uploaded_types.add(doc["document_type"])
+                    if doc["status"] == "accepted":
+                        document_summary["total_accepted"] += 1
+                    elif doc["status"] == "refused":
+                        document_summary["total_refused"] += 1
+                        document_summary["refused_documents"].append({
+                            "document_type": doc["document_type"].replace('_', ' ').title(),
+                            "refusal_reason": doc.get("refusal_reason", "No reason provided"),
+                            "refused_at": doc.get("refused_at").isoformat() if doc.get("refused_at") else None
+                        })
+            
+            document_summary["total_uploaded"] = len(uploaded_types)
+            
+            enrollment_status = {
+                "id": enrollment["id"],
+                "school_name": school["name"],
+                "school_address": school["address"],
+                "school_state": school["state"],
+                "enrollment_status": enrollment["enrollment_status"],
+                "created_at": enrollment["created_at"].isoformat(),
+                "approved_at": enrollment.get("approved_at").isoformat() if enrollment.get("approved_at") else None,
+                "document_summary": document_summary,
+                "rejection_details": rejection_details,
+                "can_reapply": enrollment["enrollment_status"] == "rejected"
+            }
+            enrollment_statuses.append(enrollment_status)
+        
+        return {
+            "enrollments": enrollment_statuses,
+            "student_name": f"{current_user['first_name']} {current_user['last_name']}",
+            "total_enrollments": len(enrollment_statuses),
+            "has_rejections": any(e["enrollment_status"] == "rejected" for e in enrollments)
+        }
+    
+    except Exception as e:
+        logger.error(f"Get student enrollment status error: {str(e)}")
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=500, detail="Failed to get enrollment status")
+
 app.include_router(api_router)
 
 if __name__ == "__main__":
