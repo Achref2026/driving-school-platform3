@@ -142,26 +142,39 @@ const ManagerDashboard = ({ user, token }) => {
     }
   };
 
-  const handleRejectEnrollment = async (enrollmentId) => {
-    const reason = prompt('Please provide a reason for rejection:');
-    if (!reason) return; // User cancelled
-    
+  const handleRejectEnrollment = async (enrollment) => {
+    // Set the enrollment to be rejected and show the modal
+    setSelectedEnrollment(enrollment);
+    setRefusalReason('');
+    setShowRefusalModal(true);
+  };
+
+  const handleSubmitEnrollmentRejection = async () => {
+    if (!refusalReason.trim()) {
+      alert('Please provide a reason for rejection');
+      return;
+    }
+
     try {
       const headers = { Authorization: `Bearer ${token}` };
       const formData = new FormData();
-      formData.append('reason', reason);
+      formData.append('reason', refusalReason);
       
-      await axios.post(`${API}/manager/enrollments/${enrollmentId}/reject`, formData, { headers });
+      await axios.post(`${API}/manager/enrollments/${selectedEnrollment.id}/reject`, formData, { headers });
       
       setEnrollments(prev => 
         prev.map(enrollment => 
-          enrollment.id === enrollmentId 
+          enrollment.id === selectedEnrollment.id 
             ? { ...enrollment, enrollment_status: 'rejected' }
             : enrollment
         )
       );
       
-      alert('Enrollment rejected');
+      setShowRefusalModal(false);
+      setSelectedEnrollment(null);
+      setRefusalReason('');
+      
+      alert('Enrollment rejected successfully');
     } catch (error) {
       console.error('Error rejecting enrollment:', error);
       alert('Failed to reject enrollment');
