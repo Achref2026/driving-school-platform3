@@ -686,46 +686,67 @@ const ManagerDashboard = ({ user, token }) => {
                         </td>
                         <td>{new Date(enrollment.created_at).toLocaleDateString()}</td>
                         <td>
-                          <div className="dropdown">
-                            <button className="btn btn-outline-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown">
-                              Actions
-                            </button>
-                            <ul className="dropdown-menu">
-                              {enrollment.enrollment_status === 'pending_approval' && (
-                                <>
+                          {enrollment.enrollment_status === 'pending_approval' ? (
+                            <div className="d-flex gap-2">
+                              <button
+                                onClick={() => handleApproveEnrollment(enrollment.id)}
+                                className="btn btn-success btn-sm"
+                                title="Approve Enrollment"
+                              >
+                                <i className="fas fa-check me-1"></i>
+                                Approve
+                              </button>
+                              <button
+                                onClick={() => handleRejectEnrollment(enrollment.id)}
+                                className="btn btn-danger btn-sm"
+                                title="Reject Enrollment"
+                              >
+                                <i className="fas fa-times me-1"></i>
+                                Reject
+                              </button>
+                              <div className="dropdown">
+                                <button className="btn btn-outline-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown">
+                                  <i className="fas fa-ellipsis-h"></i>
+                                </button>
+                                <ul className="dropdown-menu">
                                   <li>
-                                    <button 
-                                      className="dropdown-item text-success"
-                                      onClick={() => handleApproveEnrollment(enrollment.id)}
-                                    >
-                                      <i className="fas fa-check me-2"></i>Approve
+                                    <button className="dropdown-item">
+                                      <i className="fas fa-eye me-2"></i>View Details
                                     </button>
                                   </li>
                                   <li>
                                     <button 
-                                      className="dropdown-item text-danger"
-                                      onClick={() => handleRejectEnrollment(enrollment.id)}
+                                      className="dropdown-item"
+                                      onClick={() => handleViewDocuments(enrollment.id)}
                                     >
-                                      <i className="fas fa-times me-2"></i>Reject
+                                      <i className="fas fa-file-alt me-2"></i>View Documents
                                     </button>
                                   </li>
-                                </>
-                              )}
-                              <li>
-                                <button className="dropdown-item">
-                                  <i className="fas fa-eye me-2"></i>View Details
-                                </button>
-                              </li>
-                              <li>
-                                <button 
-                                  className="dropdown-item"
-                                  onClick={() => handleViewDocuments(enrollment.id)}
-                                >
-                                  <i className="fas fa-file-alt me-2"></i>View Documents
-                                </button>
-                              </li>
-                            </ul>
-                          </div>
+                                </ul>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="dropdown">
+                              <button className="btn btn-outline-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown">
+                                Actions
+                              </button>
+                              <ul className="dropdown-menu">
+                                <li>
+                                  <button className="dropdown-item">
+                                    <i className="fas fa-eye me-2"></i>View Details
+                                  </button>
+                                </li>
+                                <li>
+                                  <button 
+                                    className="dropdown-item"
+                                    onClick={() => handleViewDocuments(enrollment.id)}
+                                  >
+                                    <i className="fas fa-file-alt me-2"></i>View Documents
+                                  </button>
+                                </li>
+                              </ul>
+                            </div>
+                          )}
                         </td>
                       </tr>
                     ))}
