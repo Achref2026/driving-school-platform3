@@ -925,7 +925,9 @@ class EnrollmentApprovalTester:
             
         data = {'reason': reason}
         headers = self.manager_headers.copy()
-        headers['Content-Type'] = 'application/x-www-form-urlencoded'
+        # Remove Content-Type for multipart/form-data
+        if 'Content-Type' in headers:
+            del headers['Content-Type']
         
         success, response = self.run_test(
             f"Reject Enrollment {enrollment_id}",
@@ -933,7 +935,8 @@ class EnrollmentApprovalTester:
             f"api/manager/enrollments/{enrollment_id}/reject",
             200,
             data=data,
-            headers=headers
+            headers=headers,
+            files={}
         )
         
         if success:
