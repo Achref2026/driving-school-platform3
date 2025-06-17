@@ -736,7 +736,7 @@ const ManagerDashboard = ({ user, token }) => {
                                     Approve
                                   </button>
                                   <button
-                                    onClick={() => handleRejectEnrollment(enrollment.id)}
+                                    onClick={() => handleRejectEnrollment(enrollment)}
                                     className="btn btn-danger"
                                   >
                                     Reject
