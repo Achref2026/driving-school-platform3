@@ -574,6 +574,116 @@ const ManagerDashboard = ({ user, token }) => {
               </div>
             </div>
 
+            {/* Pending Approvals Alert */}
+            {enrollments.filter(e => e.enrollment_status === 'pending_approval').length > 0 && (
+              <div className="col-12">
+                <div className="alert alert-warning d-flex align-items-center" role="alert">
+                  <i className="fas fa-exclamation-triangle fa-2x me-3"></i>
+                  <div className="flex-grow-1">
+                    <h5 className="alert-heading mb-1">Action Required!</h5>
+                    <p className="mb-0">
+                      You have <strong>{enrollments.filter(e => e.enrollment_status === 'pending_approval').length}</strong> student enrollment(s) waiting for your approval.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setActiveTab('enrollments')}
+                    className="btn btn-warning"
+                  >
+                    <i className="fas fa-eye me-2"></i>
+                    Review Now
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Pending Approvals Section */}
+            {enrollments.filter(e => e.enrollment_status === 'pending_approval').length > 0 && (
+              <div className="col-12">
+                <div className="card border-warning">
+                  <div className="card-header bg-warning text-dark">
+                    <h5 className="card-title mb-0">
+                      <i className="fas fa-clock me-2"></i>
+                      Pending Approvals ({enrollments.filter(e => e.enrollment_status === 'pending_approval').length})
+                    </h5>
+                  </div>
+                  <div className="card-body">
+                    <div className="table-responsive">
+                      <table className="table table-hover mb-0">
+                        <thead>
+                          <tr>
+                            <th>Student</th>
+                            <th>Email</th>
+                            <th>Enrolled</th>
+                            <th>Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {enrollments
+                            .filter(e => e.enrollment_status === 'pending_approval')
+                            .slice(0, 5)
+                            .map((enrollment) => (
+                            <tr key={enrollment.id}>
+                              <td>
+                                <div className="d-flex align-items-center">
+                                  <div className="avatar bg-warning text-dark rounded-circle me-3 d-flex align-items-center justify-content-center" style={{ width: '40px', height: '40px' }}>
+                                    {enrollment.student_name?.charAt(0) || 'S'}
+                                  </div>
+                                  <div>
+                                    <div className="fw-bold">{enrollment.student_name}</div>
+                                    <div className="small text-muted">Waiting for approval</div>
+                                  </div>
+                                </div>
+                              </td>
+                              <td>{enrollment.student_email}</td>
+                              <td>{new Date(enrollment.created_at).toLocaleDateString()}</td>
+                              <td>
+                                <div className="d-flex gap-2">
+                                  <button
+                                    onClick={() => handleApproveEnrollment(enrollment.id)}
+                                    className="btn btn-success btn-sm"
+                                    title="Approve this enrollment"
+                                  >
+                                    <i className="fas fa-check me-1"></i>
+                                    Approve
+                                  </button>
+                                  <button
+                                    onClick={() => handleRejectEnrollment(enrollment.id)}
+                                    className="btn btn-danger btn-sm"
+                                    title="Reject this enrollment"
+                                  >
+                                    <i className="fas fa-times me-1"></i>
+                                    Reject
+                                  </button>
+                                  <button
+                                    onClick={() => handleViewDocuments(enrollment.id)}
+                                    className="btn btn-outline-info btn-sm"
+                                    title="View uploaded documents"
+                                  >
+                                    <i className="fas fa-file-alt"></i>
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    {enrollments.filter(e => e.enrollment_status === 'pending_approval').length > 5 && (
+                      <div className="text-center mt-3">
+                        <button
+                          onClick={() => setActiveTab('enrollments')}
+                          className="btn btn-outline-warning"
+                        >
+                          <i className="fas fa-plus me-2"></i>
+                          View All Pending ({enrollments.filter(e => e.enrollment_status === 'pending_approval').length - 5} more)
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Recent Activity */}
             <div className="col-12">
               <div className="card">
