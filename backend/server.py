@@ -4278,11 +4278,12 @@ async def get_pending_documents_for_manager(
             raise e
         raise HTTPException(status_code=500, detail="Failed to get pending documents")
 
-@api_router.get("/managers/pending-enrollments")
-async def get_pending_enrollments_for_manager(
+# NEW APPROVAL SYSTEM: Get enhanced pending enrollments for 4-button workflow
+@api_router.get("/managers/pending-enrollments-enhanced")
+async def get_enhanced_pending_enrollments(
     current_user = Depends(get_current_user)
 ):
-    """Get all pending enrollments for this manager's school"""
+    """Get enhanced pending enrollments for the new 4-button approval workflow"""
     try:
         if current_user["role"] != "manager":
             raise HTTPException(status_code=403, detail="Only managers can view pending enrollments")
@@ -4292,50 +4293,80 @@ async def get_pending_enrollments_for_manager(
         if not school:
             raise HTTPException(status_code=404, detail="No school found for this manager")
         
-        # Get all pending enrollments for this school
+        # Get all pending enrollments for this school (documents uploaded and pending approval)
         enrollments_cursor = db.enrollments.find({
             "driving_school_id": school["id"],
             "enrollment_status": {"$in": ["pending_documents", "pending_approval"]}
-        })
+        }).sort("created_at", -1)
+        
         enrollments = await enrollments_cursor.to_list(length=None)
         
-        # Enrich with student information and document status
-        enriched_enrollments = []
+        # Enhanced enrollment data with comprehensive information
+        enhanced_enrollments = []
         for enrollment in enrollments:
             student = await db.users.find_one({"id": enrollment["student_id"]})
-            if student:
-                # Get document status
-                documents_cursor = db.documents.find({"user_id": student["id"]})
-                documents = await documents_cursor.to_list(length=None)
-                
-                doc_status = {}
-                for doc in documents:
-                    doc_status[doc["document_type"]] = doc["status"]
-                
-                # Check if documents are complete
-                documents_complete = await check_user_documents_complete_enhanced(student["id"], "student")
-                
-                enrollment_data = {
-                    **serialize_doc(enrollment),
+            if not student:
+                continue
+            
+            # Get document summary
+            documents_cursor = db.documents.find({"user_id": student["id"]})
+            documents = await documents_cursor.to_list(length=None)
+            
+            required_docs = REQUIRED_DOCUMENTS.get("student", [])
+            required_types = {doc.value for doc in required_docs}
+            
+            document_summary = {
+                "total_required": len(required_types),
+                "total_uploaded": 0,
+                "total_accepted": 0,
+                "total_refused": 0,
+                "total_pending": 0,
+                "all_uploaded": False,
+                "ready_for_decision": False
+            }
+            
+            uploaded_types = set()
+            for doc in documents:
+                if doc["document_type"] in required_types:
+                    uploaded_types.add(doc["document_type"])
+                    if doc["status"] == "accepted":
+                        document_summary["total_accepted"] += 1
+                    elif doc["status"] == "refused":
+                        document_summary["total_refused"] += 1
+                    elif doc["status"] == "pending":
+                        document_summary["total_pending"] += 1
+            
+            document_summary["total_uploaded"] = len(uploaded_types)
+            document_summary["all_uploaded"] = required_types.issubset(uploaded_types)
+            document_summary["ready_for_decision"] = document_summary["all_uploaded"] and document_summary["total_pending"] > 0
+            
+            # Determine if this enrollment is ready for the new approval workflow
+            if document_summary["all_uploaded"]:
+                enhanced_enrollment = {
+                    "id": enrollment["id"],
+                    "student_id": student["id"],
                     "student_name": f"{student['first_name']} {student['last_name']}",
-                    "student_email": student['email'],
-                    "student_phone": student.get('phone', ''),
-                    "document_status": doc_status,
-                    "documents_complete": documents_complete
+                    "student_email": student["email"],
+                    "student_phone": student.get("phone", ""),
+                    "enrollment_status": enrollment["enrollment_status"],
+                    "created_at": enrollment["created_at"].isoformat(),
+                    "document_summary": document_summary,
+                    "days_pending": (datetime.utcnow() - enrollment["created_at"]).days
                 }
-                enriched_enrollments.append(enrollment_data)
+                enhanced_enrollments.append(enhanced_enrollment)
         
         return {
-            "enrollments": enriched_enrollments,
+            "enrollments": enhanced_enrollments,
             "school_name": school["name"],
-            "total_pending": len(enriched_enrollments)
+            "total_pending": len(enhanced_enrollments),
+            "manager_name": f"{current_user.get('first_name', '')} {current_user.get('last_name', '')}".strip()
         }
     
     except Exception as e:
-        logger.error(f"Get pending enrollments error: {str(e)}")
+        logger.error(f"Get enhanced pending enrollments error: {str(e)}")
         if isinstance(e, HTTPException):
             raise e
-        raise HTTPException(status_code=500, detail="Failed to get pending enrollments")
+        raise HTTPException(status_code=500, detail="Failed to get enhanced pending enrollments")
 
 @api_router.get("/analytics/student-progress/{student_id}")
 async def get_student_progress_fixed(
