@@ -1,17 +1,66 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* Import Bootstrap */
+@import 'bootstrap/dist/css/bootstrap.min.css';
+
+/* Custom Blue, White, Black Theme */
+:root {
+  --primary-blue: #0d6efd;
+  --primary-blue-dark: #0b5ed7;
+  --primary-blue-light: #3d8bfd;
+  --secondary-blue: #6c757d;
+  --accent-black: #000000;
+  --dark-gray: #343a40;
+  --light-gray: #6c757d;
+  --background-light: #f8f9fa;
+  --white: #ffffff;
+  --border-color: #dee2e6;
+  --text-dark: #212529;
+  --text-muted: #6c757d;
+}
 
 body {
-    margin: 0;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto",
-        "Oxygen", "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans",
-        "Helvetica Neue", sans-serif;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
+  margin: 0;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  line-height: 1.6;
+  color: var(--text-dark);
+  background-color: var(--background-light);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 code {
-    font-family: source-code-pro, Menlo, Monaco, Consolas, "Courier New",
-        monospace;
+  font-family: source-code-pro, Menlo, Monaco, Consolas, "Courier New",
+      monospace;
+}
+
+/* Custom Bootstrap Overrides */
+.btn-primary {
+  background-color: var(--primary-blue);
+  border-color: var(--primary-blue);
+}
+
+.btn-primary:hover {
+  background-color: var(--primary-blue-dark);
+  border-color: var(--primary-blue-dark);
+}
+
+.btn-dark {
+  background-color: var(--accent-black);
+  border-color: var(--accent-black);
+}
+
+.btn-dark:hover {
+  background-color: var(--dark-gray);
+  border-color: var(--dark-gray);
+}
+
+.text-primary {
+  color: var(--primary-blue) !important;
+}
+
+.bg-primary {
+  background-color: var(--primary-blue) !important;
+}
+
+.border-primary {
+  border-color: var(--primary-blue) !important;
 }
