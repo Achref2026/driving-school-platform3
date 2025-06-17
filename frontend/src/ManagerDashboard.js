@@ -498,14 +498,6 @@ const ManagerDashboard = ({ user, token }) => {
           </li>
           <li className="nav-item">
             <button
-              className={`nav-link ${activeTab === 'documents' ? 'active' : ''}`}
-              onClick={() => setActiveTab('documents')}
-            >
-              <i className="fas fa-file-alt me-2"></i>Pending Documents ({pendingDocuments.length})
-            </button>
-          </li>
-          <li className="nav-item">
-            <button
               className={`nav-link ${activeTab === 'analytics' ? 'active' : ''}`}
               onClick={() => setActiveTab('analytics')}
             >
