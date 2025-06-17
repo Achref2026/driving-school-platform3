@@ -1656,6 +1656,70 @@ const ManagerDashboard = ({ user, token }) => {
           </div>
         </div>
       )}
+      {/* Enrollment Rejection Modal */}
+      {showRefusalModal && selectedEnrollment && (
+        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <div className="modal-dialog">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">Reject Enrollment</h5>
+                <button
+                  type="button"
+                  className="btn-close"
+                  onClick={() => {
+                    setShowRefusalModal(false);
+                    setSelectedEnrollment(null);
+                    setRefusalReason('');
+                  }}
+                ></button>
+              </div>
+              <div className="modal-body">
+                <div className="mb-3">
+                  <p className="fw-bold">Student: {selectedEnrollment.student_name}</p>
+                  <p className="text-muted">Email: {selectedEnrollment.student_email}</p>
+                  <p className="text-muted">Enrolled: {new Date(selectedEnrollment.created_at).toLocaleDateString()}</p>
+                </div>
+                
+                <div className="mb-3">
+                  <label className="form-label fw-bold">Reason for rejection <span className="text-danger">*</span></label>
+                  <textarea
+                    className="form-control"
+                    rows="4"
+                    placeholder="Please provide a clear reason why this enrollment is being rejected..."
+                    value={refusalReason}
+                    onChange={(e) => setRefusalReason(e.target.value)}
+                  />
+                  <div className="form-text">
+                    This reason will be sent to the student so they can understand what needs to be corrected.
+                  </div>
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => {
+                    setShowRefusalModal(false);
+                    setSelectedEnrollment(null);
+                    setRefusalReason('');
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-danger"
+                  onClick={handleSubmitEnrollmentRejection}
+                  disabled={!refusalReason.trim()}
+                >
+                  <i className="fas fa-times me-2"></i>
+                  Reject Enrollment
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
