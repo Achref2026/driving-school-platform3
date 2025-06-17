@@ -810,15 +810,228 @@ class DocumentApprovalTester:
             print(f"❌ Enrollment status is {current_status}, which is not suitable for testing")
             return False
 
+class EnrollmentApprovalTester:
+    def __init__(self, base_url="https://2e073b76-e9ba-4bd7-9ccb-f4f1837a3320.preview.emergentagent.com"):
+        self.base_url = base_url
+        self.manager_token = None
+        self.manager_headers = None
+        self.tests_run = 0
+        self.tests_passed = 0
+        self.enrollment_id = None
+        
+    def run_test(self, name, method, endpoint, expected_status, data=None, headers=None, files=None):
+        """Run a single API test"""
+        url = f"{self.base_url}/{endpoint}"
+        
+        self.tests_run += 1
+        print(f"\n🔍 Testing {name}...")
+        
+        try:
+            if method == 'GET':
+                response = requests.get(url, headers=headers)
+            elif method == 'POST':
+                if files:
+                    response = requests.post(url, data=data, headers=headers, files=files)
+                else:
+                    response = requests.post(url, json=data, headers=headers)
+            
+            success = response.status_code == expected_status
+            if success:
+                self.tests_passed += 1
+                print(f"✅ Passed - Status: {response.status_code}")
+                try:
+                    return success, response.json()
+                except:
+                    return success, {}
+            else:
+                print(f"❌ Failed - Expected {expected_status}, got {response.status_code}")
+                print(f"Response: {response.text}")
+                return False, {}
+                
+        except Exception as e:
+            print(f"❌ Failed - Error: {str(e)}")
+            return False, {}
+    
+    def login_manager(self, email="manager@example.com", password="password123"):
+        """Login as manager and get token"""
+        success, response = self.run_test(
+            "Manager Login",
+            "POST",
+            "api/auth/login",
+            200,
+            data={"email": email, "password": password}
+        )
+        
+        if success and 'access_token' in response:
+            self.manager_token = response['access_token']
+            self.manager_headers = {'Authorization': f'Bearer {self.manager_token}'}
+            print(f"✅ Manager logged in successfully: {email}")
+            return True
+        return False
+    
+    def get_pending_enrollments(self):
+        """Get pending enrollments for manager"""
+        success, response = self.run_test(
+            "Get Manager Enrollments",
+            "GET",
+            "api/manager/enrollments",
+            200,
+            headers=self.manager_headers
+        )
+        
+        if success:
+            enrollments = response.get('enrollments', [])
+            pending_enrollments = [e for e in enrollments if e.get('enrollment_status') == 'pending_approval']
+            print(f"✅ Found {len(pending_enrollments)} pending enrollments")
+            
+            if pending_enrollments:
+                self.enrollment_id = pending_enrollments[0]['id']
+                print(f"✅ Selected enrollment ID: {self.enrollment_id}")
+                return pending_enrollments
+            else:
+                print("❌ No pending enrollments found")
+        return []
+    
+    def approve_enrollment(self, enrollment_id=None):
+        """Approve an enrollment"""
+        if not enrollment_id:
+            enrollment_id = self.enrollment_id
+            
+        if not enrollment_id:
+            print("❌ No enrollment ID available")
+            return False
+            
+        success, response = self.run_test(
+            f"Approve Enrollment {enrollment_id}",
+            "POST",
+            f"api/manager/enrollments/{enrollment_id}/approve",
+            200,
+            headers=self.manager_headers
+        )
+        
+        if success:
+            print(f"✅ Enrollment {enrollment_id} approved successfully")
+            return True
+        return False
+    
+    def reject_enrollment(self, enrollment_id=None, reason="Test rejection reason"):
+        """Reject an enrollment"""
+        if not enrollment_id:
+            enrollment_id = self.enrollment_id
+            
+        if not enrollment_id:
+            print("❌ No enrollment ID available")
+            return False
+            
+        data = {'reason': reason}
+        headers = self.manager_headers.copy()
+        headers['Content-Type'] = 'application/x-www-form-urlencoded'
+        
+        success, response = self.run_test(
+            f"Reject Enrollment {enrollment_id}",
+            "POST",
+            f"api/manager/enrollments/{enrollment_id}/reject",
+            200,
+            data=data,
+            headers=headers
+        )
+        
+        if success:
+            print(f"✅ Enrollment {enrollment_id} rejected successfully")
+            return True
+        return False
+    
+    def verify_enrollment_status(self, enrollment_id, expected_status):
+        """Verify enrollment status"""
+        success, response = self.run_test(
+            f"Verify Enrollment Status",
+            "GET",
+            "api/manager/enrollments",
+            200,
+            headers=self.manager_headers
+        )
+        
+        if success:
+            enrollments = response.get('enrollments', [])
+            enrollment = next((e for e in enrollments if e.get('id') == enrollment_id), None)
+            
+            if enrollment:
+                actual_status = enrollment.get('enrollment_status')
+                if actual_status == expected_status:
+                    print(f"✅ Enrollment status is {actual_status} as expected")
+                    return True
+                else:
+                    print(f"❌ Enrollment status is {actual_status}, expected {expected_status}")
+            else:
+                print(f"❌ Enrollment {enrollment_id} not found")
+        return False
+    
+    def run_enrollment_approval_tests(self):
+        """Run all tests for enrollment approval workflow"""
+        print("\n🔍 TESTING ENROLLMENT APPROVAL/REJECTION WORKFLOW")
+        print("=" * 60)
+        
+        # Step 1: Login as manager
+        if not self.login_manager():
+            print("❌ Manager login failed, stopping tests")
+            return False
+        
+        # Step 2: Get pending enrollments
+        pending_enrollments = self.get_pending_enrollments()
+        if not pending_enrollments:
+            print("❌ No pending enrollments found, stopping tests")
+            return False
+        
+        # If we have multiple pending enrollments, we can test both approve and reject
+        if len(pending_enrollments) >= 2:
+            # Test approve functionality
+            approve_id = pending_enrollments[0]['id']
+            if self.approve_enrollment(approve_id):
+                if self.verify_enrollment_status(approve_id, 'approved'):
+                    print("✅ Enrollment approval workflow tested successfully")
+                else:
+                    print("❌ Enrollment status not updated after approval")
+            else:
+                print("❌ Failed to approve enrollment")
+            
+            # Test reject functionality
+            reject_id = pending_enrollments[1]['id']
+            if self.reject_enrollment(reject_id, "Testing rejection functionality"):
+                if self.verify_enrollment_status(reject_id, 'rejected'):
+                    print("✅ Enrollment rejection workflow tested successfully")
+                else:
+                    print("❌ Enrollment status not updated after rejection")
+            else:
+                print("❌ Failed to reject enrollment")
+        else:
+            # We only have one pending enrollment, so we'll just test approval
+            print("Only one pending enrollment found, testing approval only")
+            if self.approve_enrollment():
+                if self.verify_enrollment_status(self.enrollment_id, 'approved'):
+                    print("✅ Enrollment approval workflow tested successfully")
+                else:
+                    print("❌ Enrollment status not updated after approval")
+            else:
+                print("❌ Failed to approve enrollment")
+        
+        # Final results
+        print("\n" + "=" * 60)
+        print(f"🎉 TESTS PASSED: {self.tests_passed}/{self.tests_run}")
+        
+        return self.tests_passed == self.tests_run
+
 if __name__ == "__main__":
     # Choose which test to run
-    test_type = "document_approval"  # Change to "general" for general tests
+    test_type = "enrollment_approval"  # Options: "general", "document_approval", "enrollment_approval"
     
     if test_type == "general":
         tester = DrivingSchoolAPITester()
         success = tester.run_all_tests()
-    else:
+    elif test_type == "document_approval":
         tester = DocumentApprovalTester()
         success = tester.run_document_approval_tests()
+    else:
+        tester = EnrollmentApprovalTester()
+        success = tester.run_enrollment_approval_tests()
         
     sys.exit(0 if success else 1)
