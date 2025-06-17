@@ -1300,9 +1300,9 @@ function App() {
   const renderDashboard = () => {
     const token = localStorage.getItem('token');
     
-    // If user is a manager, render the dedicated ManagerDashboard
+    // If user is a manager, render the new enhanced ManagerDashboard with 4-button approval system
     if (user?.role === 'manager') {
-      return <ManagerDashboard user={user} token={token} />;
+      return <NewManagerDashboard user={user} token={token} />;
     }
     
     // If user is a teacher, render the dedicated TeacherDashboard
