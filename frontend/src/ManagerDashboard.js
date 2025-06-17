@@ -10,9 +10,6 @@ const ManagerDashboard = ({ user, token }) => {
   const [enrollments, setEnrollments] = useState([]);
   const [teachers, setTeachers] = useState([]);
   const [analytics, setAnalytics] = useState(null);
-  const [quizzes, setQuizzes] = useState([]);
-  const [sessions, setSessions] = useState([]);
-  const [pendingDocuments, setPendingDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
