@@ -41,7 +41,7 @@ def setup_test_data():
         print(f"❌ Student registration failed: {student_response.text}")
         return False
     
-    # 2. Register manager
+    # 2. Register manager (as guest initially)
     print("\n2️⃣ Registering manager...")
     manager_data = {
         "email": "manager8@auto-ecoleblidacentreschool.dz",
@@ -62,12 +62,12 @@ def setup_test_data():
     manager_response = requests.post(f"{BASE_URL}/auth/register", data=manager_data, files=files)
     if manager_response.status_code == 200:
         manager_token = manager_response.json()['access_token']
-        print(f"✅ Manager registered: {manager_data['email']}")
+        print(f"✅ Manager registered: {manager_data['email']} (role: {manager_response.json()['user']['role']})")
     else:
         print(f"❌ Manager registration failed: {manager_response.text}")
         return False
     
-    # 3. Create driving school
+    # 3. Create driving school (this will convert guest to manager)
     print("\n3️⃣ Creating driving school...")
     manager_headers = {'Authorization': f'Bearer {manager_token}'}
     
