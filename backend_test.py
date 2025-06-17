@@ -465,6 +465,45 @@ class DocumentApprovalTester:
                     return True
             
             print("❌ No enrollment with pending_documents status found")
+            print("Will try to create a new enrollment...")
+            return self.create_new_enrollment()
+        return False
+        
+    def create_new_enrollment(self):
+        """Create a new enrollment for testing"""
+        # First get available schools
+        success, response = self.run_test(
+            "Get Available Schools",
+            "GET",
+            "driving-schools",
+            200,
+            headers=self.student_headers
+        )
+        
+        if not success or not response.get('schools'):
+            print("❌ Failed to get available schools")
+            return False
+            
+        # Use the first school
+        school_id = response['schools'][0]['id']
+        print(f"✅ Found school with ID: {school_id}")
+        
+        # Create enrollment
+        success, response = self.run_test(
+            "Create Enrollment",
+            "POST",
+            "enrollments",
+            200,
+            data={"school_id": school_id},
+            headers=self.student_headers
+        )
+        
+        if success and response.get('enrollment_id'):
+            self.enrollment_id = response['enrollment_id']
+            print(f"✅ Created new enrollment with ID: {self.enrollment_id}")
+            return True
+        
+        print("❌ Failed to create new enrollment")
         return False
     
     def get_student_documents(self):
