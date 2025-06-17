@@ -458,18 +458,33 @@ class DocumentApprovalTester:
         if success:
             # Find the enrollment with pending_documents status
             enrollments = response.get('enrollments', [])
+            if not enrollments:
+                print("❌ No enrollments found")
+                print("Will try to create a new enrollment...")
+                return self.create_new_enrollment()
+                
+            print(f"Found {len(enrollments)} enrollments:")
             for enrollment in enrollments:
-                if enrollment.get('enrollment_status') == 'pending_documents':
+                status = enrollment.get('enrollment_status')
+                print(f"  - Enrollment ID: {enrollment.get('id')}, Status: {status}")
+                
+                if status == 'pending_documents':
                     self.enrollment_id = enrollment.get('id')
                     print(f"✅ Found enrollment with pending_documents status: {self.enrollment_id}")
                     return True
+                elif status == 'pending_approval':
+                    # We can use this enrollment to test the manager's side
+                    self.enrollment_id = enrollment.get('id')
+                    print(f"✅ Found enrollment with pending_approval status: {self.enrollment_id}")
+                    print("Will test manager's document approval functionality")
+                    return True
             
-            print("❌ No enrollment with pending_documents status found")
-            print("Will try to create a new enrollment...")
-            return self.create_new_enrollment()
+            print("❌ No suitable enrollment found")
+            print("Will try to create a new enrollment with a different school...")
+            return self.create_new_enrollment(try_different_school=True)
         return False
         
-    def create_new_enrollment(self):
+    def create_new_enrollment(self, try_different_school=False):
         """Create a new enrollment for testing"""
         # First get available schools
         success, response = self.run_test(
@@ -484,8 +499,10 @@ class DocumentApprovalTester:
             print("❌ Failed to get available schools")
             return False
             
-        # Use the first school
-        school_id = response['schools'][0]['id']
+        # Use the first school or a different one if specified
+        schools = response['schools']
+        school_index = 1 if try_different_school and len(schools) > 1 else 0
+        school_id = schools[school_index]['id']
         print(f"✅ Found school with ID: {school_id}")
         
         # Create enrollment
