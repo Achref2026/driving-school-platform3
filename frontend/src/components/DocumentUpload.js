@@ -15,7 +15,7 @@ const DocumentUpload = ({
   const [previewUrls, setPreviewUrls] = useState({});
   const fileInputRefs = useRef({});
 
-  // Document type configurations
+  // Document type configurations (removed driving_license and teaching_license)
   const documentConfigs = {
     profile_photo: {
       label: 'Profile Photo',
@@ -44,20 +44,6 @@ const DocumentUpload = ({
       accept: '.pdf,.jpg,.jpeg,.png',
       description: 'Proof of residence document',
       color: 'bg-purple-500'
-    },
-    driving_license: {
-      label: 'Driving License',
-      icon: '🚗',
-      accept: '.pdf,.jpg,.jpeg,.png',
-      description: 'Valid driving license',
-      color: 'bg-yellow-500'
-    },
-    teaching_license: {
-      label: 'Teaching License',
-      icon: '🎓',
-      accept: '.pdf,.jpg,.jpeg,.png',
-      description: 'Teaching certification',
-      color: 'bg-indigo-500'
     }
   };
 
@@ -227,7 +213,7 @@ const DocumentUpload = ({
                         <div>
                           <p className="text-green-800 font-medium">✓ Document Uploaded</p>
                           <p className="text-green-600 text-sm">
-                            Status: {uploadedDoc?.is_verified ? 'Verified' : 'Pending Verification'}
+                            Status: Uploaded - Ready for Review
                           </p>
                         </div>
                         {uploadedDoc?.file_url && (

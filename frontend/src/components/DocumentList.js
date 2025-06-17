@@ -29,12 +29,12 @@ const DocumentList = ({ onClose }) => {
   };
 
   const getDocumentIcon = (type) => {
+    // Removed driving_license and teaching_license icons
     const icons = {
       profile_photo: '📸',
       id_card: '🆔',
       medical_certificate: '🏥',
-      driving_license: '🚗',
-      teaching_license: '👨‍🏫'
+      residence_certificate: '🏠'
     };
     return icons[type] || '📄';
   };
