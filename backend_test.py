@@ -366,7 +366,310 @@ class DrivingSchoolAPITester:
         
         return self.tests_passed == self.tests_run
 
+class DocumentApprovalTester:
+    def __init__(self, base_url="https://b3fac1a6-d84b-4483-9ac3-199e11902926.preview.emergentagent.com/api"):
+        self.base_url = base_url
+        self.student_token = None
+        self.manager_token = None
+        self.student_headers = None
+        self.manager_headers = None
+        self.tests_run = 0
+        self.tests_passed = 0
+        self.enrollment_id = None
+        self.document_ids = {}
+        
+    def run_test(self, name, method, endpoint, expected_status, data=None, headers=None, files=None):
+        """Run a single API test"""
+        url = f"{self.base_url}/{endpoint}"
+        
+        self.tests_run += 1
+        print(f"\n🔍 Testing {name}...")
+        
+        try:
+            if method == 'GET':
+                response = requests.get(url, headers=headers)
+            elif method == 'POST':
+                if files:
+                    response = requests.post(url, data=data, headers=headers, files=files)
+                else:
+                    response = requests.post(url, json=data, headers=headers)
+            
+            success = response.status_code == expected_status
+            if success:
+                self.tests_passed += 1
+                print(f"✅ Passed - Status: {response.status_code}")
+                try:
+                    return success, response.json()
+                except:
+                    return success, {}
+            else:
+                print(f"❌ Failed - Expected {expected_status}, got {response.status_code}")
+                print(f"Response: {response.text}")
+                return False, {}
+                
+        except Exception as e:
+            print(f"❌ Failed - Error: {str(e)}")
+            return False, {}
+    
+    def login_student(self, email="student@test.dz", password="student123"):
+        """Login as student and get token"""
+        success, response = self.run_test(
+            "Student Login",
+            "POST",
+            "auth/login",
+            200,
+            data={"email": email, "password": password}
+        )
+        
+        if success and 'access_token' in response:
+            self.student_token = response['access_token']
+            self.student_headers = {'Authorization': f'Bearer {self.student_token}'}
+            print(f"✅ Student logged in successfully: {email}")
+            return True
+        return False
+    
+    def login_manager(self, email="manager8@auto-ecoleblidacentreschool.dz", password="manager123"):
+        """Login as manager and get token"""
+        success, response = self.run_test(
+            "Manager Login",
+            "POST",
+            "auth/login",
+            200,
+            data={"email": email, "password": password}
+        )
+        
+        if success and 'access_token' in response:
+            self.manager_token = response['access_token']
+            self.manager_headers = {'Authorization': f'Bearer {self.manager_token}'}
+            print(f"✅ Manager logged in successfully: {email}")
+            return True
+        return False
+    
+    def get_student_dashboard(self):
+        """Get student dashboard data"""
+        success, response = self.run_test(
+            "Get Student Dashboard",
+            "GET",
+            "dashboard",
+            200,
+            headers=self.student_headers
+        )
+        
+        if success:
+            # Find the enrollment with pending_documents status
+            enrollments = response.get('enrollments', [])
+            for enrollment in enrollments:
+                if enrollment.get('enrollment_status') == 'pending_documents':
+                    self.enrollment_id = enrollment.get('id')
+                    print(f"✅ Found enrollment with pending_documents status: {self.enrollment_id}")
+                    return True
+            
+            print("❌ No enrollment with pending_documents status found")
+        return False
+    
+    def get_student_documents(self):
+        """Get student documents"""
+        success, response = self.run_test(
+            "Get Student Documents",
+            "GET",
+            "documents",
+            200,
+            headers=self.student_headers
+        )
+        
+        if success:
+            # Check required documents
+            required_docs = response.get('required_documents', [])
+            print(f"✅ Required documents: {required_docs}")
+            return required_docs
+        return []
+    
+    def create_dummy_file(self):
+        """Create a dummy file for document upload"""
+        return b"dummy file content for testing documents"
+    
+    def upload_document(self, doc_type):
+        """Upload a document"""
+        files = {'file': (f'{doc_type}.jpg', self.create_dummy_file(), 'image/jpeg')}
+        data = {'document_type': doc_type}
+        
+        success, response = self.run_test(
+            f"Upload {doc_type}",
+            "POST",
+            "documents/upload",
+            200,
+            data=data,
+            headers=self.student_headers,
+            files=files
+        )
+        
+        if success and 'document' in response:
+            doc_id = response['document']['id']
+            self.document_ids[doc_type] = doc_id
+            print(f"✅ Document uploaded with ID: {doc_id}")
+            return doc_id
+        return None
+    
+    def check_enrollment_status(self, expected_status):
+        """Check if enrollment status matches expected status"""
+        success, response = self.run_test(
+            f"Check Enrollment Status (expecting {expected_status})",
+            "GET",
+            "dashboard",
+            200,
+            headers=self.student_headers
+        )
+        
+        if success:
+            enrollments = response.get('enrollments', [])
+            for enrollment in enrollments:
+                if enrollment.get('id') == self.enrollment_id:
+                    actual_status = enrollment.get('enrollment_status')
+                    if actual_status == expected_status:
+                        print(f"✅ Enrollment status is {actual_status} as expected")
+                        return True
+                    else:
+                        print(f"❌ Enrollment status is {actual_status}, expected {expected_status}")
+                        return False
+        
+        print("❌ Enrollment not found")
+        return False
+    
+    def get_pending_documents_for_manager(self):
+        """Get pending documents for manager"""
+        success, response = self.run_test(
+            "Get Pending Documents for Manager",
+            "GET",
+            "managers/pending-documents",
+            200,
+            headers=self.manager_headers
+        )
+        
+        if success:
+            documents = response.get('documents', [])
+            print(f"✅ Manager sees {len(documents)} pending documents")
+            return documents
+        return []
+    
+    def accept_document(self, doc_id):
+        """Accept a document as manager"""
+        success, response = self.run_test(
+            f"Accept Document {doc_id}",
+            "POST",
+            f"documents/accept/{doc_id}",
+            200,
+            headers=self.manager_headers
+        )
+        
+        if success:
+            documents_complete = response.get('documents_complete', False)
+            print(f"✅ Document accepted. All documents complete: {documents_complete}")
+            return documents_complete
+        return False
+    
+    def run_document_approval_tests(self):
+        """Run all tests for document approval workflow"""
+        print("\n🔍 TESTING DOCUMENT APPROVAL WORKFLOW")
+        print("=" * 60)
+        
+        # Step 1: Login as student
+        if not self.login_student():
+            print("❌ Student login failed, stopping tests")
+            return False
+        
+        # Step 2: Get student dashboard and find enrollment with pending_documents status
+        if not self.get_student_dashboard():
+            print("❌ Failed to find enrollment with pending_documents status, stopping tests")
+            return False
+        
+        # Step 3: Get required documents
+        required_docs = self.get_student_documents()
+        if not required_docs:
+            print("❌ Failed to get required documents, stopping tests")
+            return False
+        
+        # Step 4: Upload documents one by one and verify status doesn't change
+        for doc_type in required_docs:
+            doc_id = self.upload_document(doc_type)
+            if not doc_id:
+                print(f"❌ Failed to upload {doc_type}, stopping tests")
+                return False
+            
+            # Verify status hasn't changed after upload
+            if not self.check_enrollment_status('pending_documents'):
+                print(f"❌ Enrollment status changed after uploading {doc_type}, but it shouldn't")
+                return False
+        
+        print("\n✅ All documents uploaded successfully")
+        print("✅ Enrollment status correctly remained 'pending_documents' after all uploads")
+        
+        # Step 5: Login as manager
+        if not self.login_manager():
+            print("❌ Manager login failed, stopping tests")
+            return False
+        
+        # Step 6: Get pending documents for manager
+        pending_docs = self.get_pending_documents_for_manager()
+        if not pending_docs:
+            print("❌ No pending documents found for manager, stopping tests")
+            return False
+        
+        # Step 7: Accept all documents except the last one
+        doc_ids = list(self.document_ids.values())
+        for i, doc_id in enumerate(doc_ids[:-1]):
+            documents_complete = self.accept_document(doc_id)
+            if documents_complete:
+                print(f"❌ Documents marked as complete after accepting {i+1}/{len(doc_ids)} documents")
+                return False
+            
+            # Verify status hasn't changed after accepting some documents
+            if not self.check_enrollment_status('pending_documents'):
+                print(f"❌ Enrollment status changed after accepting {i+1}/{len(doc_ids)} documents, but it shouldn't")
+                return False
+        
+        print("\n✅ Enrollment status correctly remained 'pending_documents' after accepting all but last document")
+        
+        # Step 8: Accept the last document
+        last_doc_id = doc_ids[-1]
+        documents_complete = self.accept_document(last_doc_id)
+        if not documents_complete:
+            print("❌ Documents not marked as complete after accepting all documents")
+            return False
+        
+        # Step 9: Verify status changed to pending_approval
+        if not self.check_enrollment_status('pending_approval'):
+            print("❌ Enrollment status did not change to pending_approval after accepting all documents")
+            return False
+        
+        print("\n✅ Enrollment status correctly changed to 'pending_approval' after accepting all documents")
+        
+        # Step 10: Verify no more pending documents for this student
+        pending_docs_after = self.get_pending_documents_for_manager()
+        student_pending_docs = [doc for doc in pending_docs_after if doc['id'] in doc_ids]
+        if student_pending_docs:
+            print(f"❌ Still found {len(student_pending_docs)} pending documents after accepting all")
+            return False
+        
+        print("\n✅ No more pending documents for this student after accepting all")
+        
+        # Final results
+        print("\n" + "=" * 60)
+        print(f"🎉 TESTS PASSED: {self.tests_passed}/{self.tests_run}")
+        print("✅ Document approval workflow is working correctly")
+        print("✅ Enrollment status transitions as expected")
+        print("✅ No premature status changes occur")
+        
+        return self.tests_passed == self.tests_run
+
 if __name__ == "__main__":
-    tester = DrivingSchoolAPITester()
-    success = tester.run_all_tests()
+    # Choose which test to run
+    test_type = "document_approval"  # Change to "general" for general tests
+    
+    if test_type == "general":
+        tester = DrivingSchoolAPITester()
+        success = tester.run_all_tests()
+    else:
+        tester = DocumentApprovalTester()
+        success = tester.run_document_approval_tests()
+        
     sys.exit(0 if success else 1)
