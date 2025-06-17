@@ -1892,14 +1892,103 @@ async def get_pending_enrollments(current_user = Depends(get_current_user)):
             raise e
         raise HTTPException(status_code=500, detail="Failed to fetch enrollments")
 
-@api_router.post("/manager/enrollments/{enrollment_id}/approve")
-async def approve_enrollment(
+# NEW APPROVAL SYSTEM: Get student details with documents for manager review
+@api_router.get("/manager/student-details/{student_id}")
+async def get_student_details_for_approval(
+    student_id: str,
+    current_user = Depends(get_current_user)
+):
+    """Get comprehensive student details for manager approval decision"""
+    try:
+        if current_user["role"] != "manager":
+            raise HTTPException(status_code=403, detail="Only managers can view student details")
+        
+        # Get student info
+        student = await db.users.find_one({"id": student_id})
+        if not student:
+            raise HTTPException(status_code=404, detail="Student not found")
+        
+        # Get student's enrollment for this manager's school
+        school = await db.driving_schools.find_one({"manager_id": current_user["id"]})
+        if not school:
+            raise HTTPException(status_code=404, detail="No school found for this manager")
+        
+        enrollment = await db.enrollments.find_one({
+            "student_id": student_id,
+            "driving_school_id": school["id"]
+        })
+        if not enrollment:
+            raise HTTPException(status_code=404, detail="Student enrollment not found for your school")
+        
+        # Get all student documents
+        documents_cursor = db.documents.find({"user_id": student_id})
+        documents = await documents_cursor.to_list(length=None)
+        
+        # Organize documents by type with status
+        required_docs = REQUIRED_DOCUMENTS.get("student", [])
+        document_status = {}
+        
+        for doc_type in required_docs:
+            doc_type_value = doc_type.value
+            student_docs = [doc for doc in documents if doc["document_type"] == doc_type_value]
+            
+            if student_docs:
+                # Get latest document for this type
+                latest_doc = max(student_docs, key=lambda x: x["upload_date"])
+                document_status[doc_type_value] = {
+                    "id": latest_doc["id"],
+                    "file_url": latest_doc["file_url"],
+                    "file_name": latest_doc["file_name"],
+                    "status": latest_doc["status"],
+                    "upload_date": latest_doc["upload_date"].isoformat(),
+                    "refusal_reason": latest_doc.get("refusal_reason")
+                }
+            else:
+                document_status[doc_type_value] = {
+                    "status": "not_uploaded",
+                    "file_url": None,
+                    "file_name": None,
+                    "upload_date": None,
+                    "refusal_reason": None
+                }
+        
+        return {
+            "student": {
+                "id": student["id"],
+                "first_name": student["first_name"],
+                "last_name": student["last_name"],
+                "email": student["email"],
+                "phone": student.get("phone", ""),
+                "address": student.get("address", ""),
+                "date_of_birth": student.get("date_of_birth", ""),
+                "gender": student.get("gender", "")
+            },
+            "enrollment": {
+                "id": enrollment["id"],
+                "enrollment_status": enrollment["enrollment_status"],
+                "created_at": enrollment["created_at"].isoformat(),
+                "approved_at": enrollment.get("approved_at").isoformat() if enrollment.get("approved_at") else None
+            },
+            "documents": document_status,
+            "school_name": school["name"]
+        }
+    
+    except Exception as e:
+        logger.error(f"Get student details error: {str(e)}")
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=500, detail="Failed to get student details")
+
+# NEW APPROVAL SYSTEM: Accept student enrollment (replaces old approve function)
+@api_router.post("/manager/enrollments/{enrollment_id}/accept")
+async def accept_student_enrollment(
     enrollment_id: str,
     current_user = Depends(get_current_user)
 ):
+    """Accept student enrollment - makes student official and able to start lessons"""
     try:
         if current_user["role"] != "manager":
-            raise HTTPException(status_code=403, detail="Only managers can approve enrollments")
+            raise HTTPException(status_code=403, detail="Only managers can accept enrollments")
         
         # Get enrollment
         enrollment = await db.enrollments.find_one({"id": enrollment_id})
@@ -1912,29 +2001,51 @@ async def approve_enrollment(
             "manager_id": current_user["id"]
         })
         if not school:
-            raise HTTPException(status_code=403, detail="Unauthorized to approve this enrollment")
+            raise HTTPException(status_code=403, detail="Unauthorized to accept this enrollment")
         
-        # Check if student has uploaded all required documents
+        # Verify all required documents are uploaded and have acceptable status
         required_docs = REQUIRED_DOCUMENTS.get("student", [])
         all_documents = await db.documents.find({"user_id": enrollment["student_id"]}).to_list(length=None)
+        
+        # Check if student has uploaded all required documents
         uploaded_types = {doc["document_type"] for doc in all_documents}
         required_types = {doc.value for doc in required_docs}
         
         if not required_types.issubset(uploaded_types):
             raise HTTPException(status_code=400, detail="Student has not uploaded all required documents")
         
-        # Approve enrollment
+        # Accept the enrollment
         await db.enrollments.update_one(
             {"id": enrollment_id},
             {
                 "$set": {
                     "enrollment_status": EnrollmentStatus.APPROVED,
-                    "approved_at": datetime.utcnow()
+                    "approved_at": datetime.utcnow(),
+                    "approved_by": current_user["id"]
                 }
             }
         )
         
-        # Update course availability
+        # Mark all student documents as accepted
+        for doc_type in required_types:
+            await db.documents.update_many(
+                {
+                    "user_id": enrollment["student_id"],
+                    "document_type": doc_type,
+                    "status": {"$in": ["pending", "refused"]}
+                },
+                {
+                    "$set": {
+                        "status": "accepted",
+                        "is_verified": True,
+                        "approved_at": datetime.utcnow(),
+                        "approved_by": current_user["id"],
+                        "refusal_reason": None
+                    }
+                }
+            )
+        
+        # Update course availability - student can now start lessons
         await update_course_availability(enrollment_id)
         
         # Send notification to student
@@ -1942,21 +2053,30 @@ async def approve_enrollment(
             "id": str(uuid.uuid4()),
             "user_id": enrollment["student_id"],
             "type": NotificationType.ENROLLMENT_APPROVED,
-            "title": "Enrollment Approved!",
-            "message": f"Your enrollment at {school['name']} has been approved. You can now start your courses!",
+            "title": "Enrollment Accepted - You Can Start Learning!",
+            "message": f"Congratulations! Your enrollment at {school['name']} has been accepted. You are now an official student and can start your lessons immediately!",
             "is_read": False,
-            "metadata": {"enrollment_id": enrollment_id, "school_name": school["name"]},
+            "metadata": {
+                "enrollment_id": enrollment_id, 
+                "school_name": school["name"],
+                "action": "accepted"
+            },
             "created_at": datetime.utcnow()
         }
         await db.notifications.insert_one(notification_doc)
         
-        return {"message": "Enrollment approved successfully"}
+        return {
+            "message": "Student enrollment accepted successfully",
+            "student_id": enrollment["student_id"],
+            "school_name": school["name"],
+            "status": "accepted"
+        }
     
     except Exception as e:
-        logger.error(f"Approve enrollment error: {str(e)}")
+        logger.error(f"Accept enrollment error: {str(e)}")
         if isinstance(e, HTTPException):
             raise e
-        raise HTTPException(status_code=500, detail="Failed to approve enrollment")
+        raise HTTPException(status_code=500, detail="Failed to accept enrollment")
 
 @api_router.post("/manager/enrollments/{enrollment_id}/reject")
 async def reject_enrollment(
