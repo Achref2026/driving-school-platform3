@@ -852,7 +852,7 @@ class EnrollmentApprovalTester:
             print(f"❌ Failed - Error: {str(e)}")
             return False, {}
     
-    def login_manager(self, email="manager8@auto-ecoleblidacentreschool.dz", password="manager123"):
+    def login_manager(self, email="manager@test.com", password="manager123"):
         """Login as manager and get token"""
         success, response = self.run_test(
             "Manager Login",
