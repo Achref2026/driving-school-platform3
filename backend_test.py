@@ -1023,9 +1023,291 @@ class EnrollmentApprovalTester:
         
         return self.tests_passed == self.tests_run
 
+class NewApprovalSystemTester:
+    def __init__(self, base_url=None):
+        # Get the backend URL from environment if available
+        self.base_url = base_url or "http://localhost:8001"
+        self.manager_token = None
+        self.student_token = None
+        self.manager_headers = None
+        self.student_headers = None
+        self.tests_run = 0
+        self.tests_passed = 0
+        self.enrollment_id = None
+        self.student_id = None
+
+    def run_test(self, name, method, endpoint, expected_status, data=None, token=None, headers=None, files=None):
+        """Run a single API test"""
+        url = f"{self.base_url}/api/{endpoint}"
+        
+        if headers is None:
+            headers = {'Content-Type': 'application/json'}
+        
+        if token:
+            headers['Authorization'] = f'Bearer {token}'
+        
+        self.tests_run += 1
+        print(f"\n🔍 Testing {name}...")
+        
+        try:
+            if method == 'GET':
+                response = requests.get(url, headers=headers)
+            elif method == 'POST':
+                if files:
+                    # Remove Content-Type for multipart/form-data
+                    if 'Content-Type' in headers:
+                        del headers['Content-Type']
+                    response = requests.post(url, data=data, files=files, headers=headers)
+                else:
+                    response = requests.post(url, json=data, headers=headers)
+            
+            success = response.status_code == expected_status
+            if success:
+                self.tests_passed += 1
+                print(f"✅ Passed - Status: {response.status_code}")
+                try:
+                    return success, response.json()
+                except:
+                    return success, {}
+            else:
+                print(f"❌ Failed - Expected {expected_status}, got {response.status_code}")
+                try:
+                    error_detail = response.json().get('detail', 'No detail provided')
+                    print(f"Error: {error_detail}")
+                except:
+                    print(f"Response: {response.text}")
+                return False, {}
+
+        except Exception as e:
+            print(f"❌ Failed - Error: {str(e)}")
+            return False, {}
+
+    def login_manager(self, email="manager@example.com", password="password123"):
+        """Login as manager and get token"""
+        success, response = self.run_test(
+            "Manager Login",
+            "POST",
+            "auth/login",
+            200,
+            data={"email": email, "password": password}
+        )
+        
+        if success and 'access_token' in response:
+            self.manager_token = response['access_token']
+            self.manager_headers = {'Authorization': f'Bearer {self.manager_token}'}
+            print(f"✅ Manager logged in successfully: {email}")
+            return True
+        return False
+
+    def login_student(self, email="student@example.com", password="password123"):
+        """Login as student and get token"""
+        success, response = self.run_test(
+            "Student Login",
+            "POST",
+            "auth/login",
+            200,
+            data={"email": email, "password": password}
+        )
+        
+        if success and 'access_token' in response:
+            self.student_token = response['access_token']
+            self.student_headers = {'Authorization': f'Bearer {self.student_token}'}
+            self.student_id = response.get('user', {}).get('id')
+            print(f"✅ Student logged in successfully: {email}")
+            return True
+        return False
+
+    def get_manager_enrollments(self):
+        """Get enrollments for manager"""
+        success, response = self.run_test(
+            "Get Manager Enrollments",
+            "GET",
+            "manager/enrollments",
+            200,
+            headers=self.manager_headers
+        )
+        
+        if success and 'enrollments' in response:
+            enrollments = response.get('enrollments', [])
+            pending_enrollments = [e for e in enrollments if e.get('enrollment_status') == 'pending_approval']
+            
+            print(f"Found {len(enrollments)} total enrollments")
+            print(f"Found {len(pending_enrollments)} pending approval enrollments")
+            
+            if pending_enrollments:
+                self.enrollment_id = pending_enrollments[0]['id']
+                self.student_id = pending_enrollments[0]['student_id']
+                print(f"Selected enrollment ID: {self.enrollment_id}")
+                print(f"Student ID: {self.student_id}")
+                return pending_enrollments
+        
+        return []
+
+    def view_student_details(self):
+        """Test the View Student Details button"""
+        if not self.student_id:
+            print("❌ No student ID available")
+            return False
+        
+        success, response = self.run_test(
+            "View Student Details",
+            "GET",
+            f"manager/student-details/{self.student_id}",
+            200,
+            headers=self.manager_headers
+        )
+        
+        if success:
+            student = response.get('student', {})
+            print(f"✅ Viewed details for student: {student.get('first_name')} {student.get('last_name')}")
+            return True
+        return False
+
+    def view_student_documents(self):
+        """Test the View Documents button"""
+        if not self.enrollment_id:
+            print("❌ No enrollment ID available")
+            return False
+        
+        success, response = self.run_test(
+            "View Student Documents",
+            "GET",
+            f"manager/enrollments/{self.enrollment_id}/documents",
+            200,
+            headers=self.manager_headers
+        )
+        
+        if success:
+            documents = response.get('documents', [])
+            print(f"✅ Viewed {len(documents)} documents for student")
+            return True
+        return False
+
+    def accept_student(self):
+        """Test the Accept Student button"""
+        if not self.enrollment_id:
+            print("❌ No enrollment ID available")
+            return False
+        
+        success, response = self.run_test(
+            "Accept Student",
+            "POST",
+            f"manager/enrollments/{self.enrollment_id}/accept",
+            200,
+            data={},
+            headers=self.manager_headers
+        )
+        
+        if success:
+            print(f"✅ Successfully accepted student enrollment")
+            return True
+        return False
+
+    def refuse_student(self, reason="Documents unclear, please resubmit clearer photos"):
+        """Test the Refuse Student button"""
+        if not self.enrollment_id:
+            print("❌ No enrollment ID available")
+            return False
+        
+        # For refuse, we need to use form data
+        data = {'reason': reason}
+        files = {}
+        
+        success, response = self.run_test(
+            "Refuse Student",
+            "POST",
+            f"manager/enrollments/{self.enrollment_id}/refuse",
+            200,
+            data=data,
+            headers=self.manager_headers,
+            files=files
+        )
+        
+        if success:
+            print(f"✅ Successfully refused student enrollment with reason: {reason}")
+            return True
+        return False
+
+    def check_student_dashboard_after_refusal(self):
+        """Check if student can see the refusal reason on their dashboard"""
+        if not self.student_token:
+            print("❌ No student token available")
+            return False
+        
+        success, response = self.run_test(
+            "Check Student Dashboard After Refusal",
+            "GET",
+            "dashboard",
+            200,
+            headers=self.student_headers
+        )
+        
+        if success:
+            enrollments = response.get('enrollments', [])
+            rejected_enrollments = [e for e in enrollments if e.get('enrollment_status') == 'rejected']
+            
+            if rejected_enrollments:
+                print(f"Found {len(rejected_enrollments)} rejected enrollments")
+                for enrollment in rejected_enrollments:
+                    if enrollment.get('refusal_reason'):
+                        print(f"Refusal reason displayed to student: {enrollment.get('refusal_reason')}")
+                        return True
+                    else:
+                        print("❌ No refusal reason found in enrollment")
+            else:
+                print("❌ No rejected enrollments found")
+        
+        return False
+
+    def run_new_approval_system_tests(self):
+        """Run all tests for the new approval system"""
+        print("\n🔍 TESTING NEW 4-BUTTON APPROVAL SYSTEM")
+        print("=" * 60)
+        
+        # Step 1: Login as manager
+        if not self.login_manager():
+            print("❌ Manager login failed, stopping tests")
+            return False
+        
+        # Step 2: Get pending enrollments
+        pending_enrollments = self.get_manager_enrollments()
+        if not pending_enrollments:
+            print("❌ No pending enrollments found, stopping tests")
+            return False
+        
+        # Step 3: Test View Student Details button
+        if not self.view_student_details():
+            print("❌ Failed to view student details")
+        
+        # Step 4: Test View Documents button
+        if not self.view_student_documents():
+            print("❌ Failed to view student documents")
+        
+        # Step 5: Login as student for later verification
+        if not self.login_student():
+            print("❌ Student login failed, will not be able to verify refusal message")
+        
+        # Step 6: Test Refuse Student button
+        if not self.refuse_student("Documents unclear, please resubmit clearer photos"):
+            print("❌ Failed to refuse student")
+            return False
+        
+        # Step 7: Check if student can see refusal reason
+        if self.student_token:
+            if not self.check_student_dashboard_after_refusal():
+                print("❌ Student cannot see refusal reason on dashboard")
+            else:
+                print("✅ Student can see refusal reason on dashboard")
+        
+        # Final results
+        print("\n" + "=" * 60)
+        print(f"🎉 TESTS PASSED: {self.tests_passed}/{self.tests_run}")
+        
+        return self.tests_passed == self.tests_run
+
 if __name__ == "__main__":
     # Choose which test to run
-    test_type = "enrollment_approval"  # Options: "general", "document_approval", "enrollment_approval"
+    test_type = "new_approval_system"  # Options: "general", "document_approval", "enrollment_approval", "new_approval_system"
     
     if test_type == "general":
         tester = DrivingSchoolAPITester()
@@ -1033,8 +1315,11 @@ if __name__ == "__main__":
     elif test_type == "document_approval":
         tester = DocumentApprovalTester()
         success = tester.run_document_approval_tests()
-    else:
+    elif test_type == "enrollment_approval":
         tester = EnrollmentApprovalTester()
         success = tester.run_enrollment_approval_tests()
+    else:
+        tester = NewApprovalSystemTester()
+        success = tester.run_new_approval_system_tests()
         
     sys.exit(0 if success else 1)
