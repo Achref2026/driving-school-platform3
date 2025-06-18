@@ -325,7 +325,15 @@ const StudentDashboard = ({ user, token }) => {
                         {enrollment.enrollment_status === 'rejected' && (
                           <div className="alert alert-danger">
                             <i className="fas fa-times-circle me-2"></i>
-                            Your enrollment was rejected. Please contact the school for more information.
+                            <strong>Your enrollment was refused.</strong>
+                            {enrollment.refusal_reason && (
+                              <div className="mt-2">
+                                <strong>Reason:</strong> {enrollment.refusal_reason}
+                              </div>
+                            )}
+                            <div className="mt-2">
+                              <small>You can contact the school or apply to another driving school.</small>
+                            </div>
                           </div>
                         )}
                       </div>
