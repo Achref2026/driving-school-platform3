@@ -5,260 +5,446 @@ const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
 
 const NewManagerDashboard = ({ user, token }) => {
-  const [activeTab, setActiveTab] = useState('approvals');
+  const [activeTab, setActiveTab] = useState('overview');
+  const [schoolData, setSchoolData] = useState(null);
   const [enrollments, setEnrollments] = useState([]);
+  const [teachers, setTeachers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // NEW APPROVAL SYSTEM: Modal states for 4-button workflow
-  const [showStudentDetailsModal, setShowStudentDetailsModal] = useState(false);
-  const [showStudentDocumentsModal, setShowStudentDocumentsModal] = useState(false);
-  const [showRefusalModal, setShowRefusalModal] = useState(false);
-  const [selectedEnrollment, setSelectedEnrollment] = useState(null);
+  // New approval system states
+  const [selectedStudent, setSelectedStudent] = useState(null);
   const [studentDetails, setStudentDetails] = useState(null);
   const [studentDocuments, setStudentDocuments] = useState(null);
+  const [showStudentModal, setShowStudentModal] = useState(false);
+  const [showDocumentsModal, setShowDocumentsModal] = useState(false);
+  const [showRefuseModal, setShowRefuseModal] = useState(false);
   const [refusalReason, setRefusalReason] = useState('');
+  const [selectedEnrollment, setSelectedEnrollment] = useState(null);
 
   useEffect(() => {
-    fetchPendingEnrollments();
-  }, []);
+    fetchManagerData();
+  }, [user]);
 
-  const fetchPendingEnrollments = async () => {
+  const fetchManagerData = async () => {
     try {
       setLoading(true);
       const headers = { Authorization: `Bearer ${token}` };
-      const response = await axios.get(`${API}/manager/pending-enrollments-enhanced`, { headers });
-      setEnrollments(response.data.enrollments || []);
-      setError('');
+
+      // Fetch school data
+      const schoolResponse = await axios.get(`${API}/schools/my`, { headers });
+      setSchoolData(schoolResponse.data);
+
+      // Fetch enrollments
+      const enrollmentsResponse = await axios.get(`${API}/manager/enrollments`, { headers });
+      setEnrollments(enrollmentsResponse.data.enrollments || []);
+
+      // Fetch teachers
+      const teachersResponse = await axios.get(`${API}/teachers/my`, { headers });
+      setTeachers(teachersResponse.data.teachers || []);
+
     } catch (error) {
-      console.error('Error fetching enrollments:', error);
-      setError('Failed to load pending enrollments');
+      console.error('Error fetching manager data:', error);
+      setError('Failed to load dashboard data');
     } finally {
       setLoading(false);
     }
   };
 
-  // NEW APPROVAL SYSTEM: 4-button workflow functions
+  // NEW APPROVAL SYSTEM FUNCTIONS
 
-  // Button 1: View Student Details
+  // 1. View Student Details
   const handleViewStudentDetails = async (enrollment) => {
     try {
+      setLoading(true);
       const headers = { Authorization: `Bearer ${token}` };
+      
       const response = await axios.get(`${API}/manager/student-details/${enrollment.student_id}`, { headers });
       setStudentDetails(response.data);
-      setSelectedEnrollment(enrollment);
-      setShowStudentDetailsModal(true);
+      setSelectedStudent(enrollment);
+      setShowStudentModal(true);
     } catch (error) {
       console.error('Error fetching student details:', error);
       alert('Failed to load student details');
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Button 2: View Uploaded Documents
-  const handleViewStudentDocuments = async (enrollment) => {
+  // 2. View Documents
+  const handleViewDocuments = async (enrollment) => {
     try {
+      setLoading(true);
       const headers = { Authorization: `Bearer ${token}` };
-      const response = await axios.get(`${API}/manager/student-documents/${enrollment.student_id}`, { headers });
+      
+      const response = await axios.get(`${API}/manager/enrollments/${enrollment.id}/documents`, { headers });
       setStudentDocuments(response.data);
-      setSelectedEnrollment(enrollment);
-      setShowStudentDocumentsModal(true);
+      setSelectedStudent(enrollment);
+      setShowDocumentsModal(true);
     } catch (error) {
       console.error('Error fetching student documents:', error);
       alert('Failed to load student documents');
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Button 3: Accept Student
+  // 3. Accept Student
   const handleAcceptStudent = async (enrollment) => {
-    if (!window.confirm(`Are you sure you want to accept ${enrollment.student_name}? This will make them an official student who can start lessons immediately.`)) {
+    if (!confirm(`Are you sure you want to accept ${enrollment.student_name}? They will become officially enrolled and can start lessons.`)) {
       return;
     }
 
     try {
+      setLoading(true);
       const headers = { Authorization: `Bearer ${token}` };
+      
       await axios.post(`${API}/manager/enrollments/${enrollment.id}/accept`, {}, { headers });
       
-      // Remove from pending list
-      setEnrollments(prev => prev.filter(e => e.id !== enrollment.id));
+      // Update enrollment status in the list
+      setEnrollments(prev => 
+        prev.map(e => 
+          e.id === enrollment.id 
+            ? { ...e, enrollment_status: 'approved' }
+            : e
+        )
+      );
       
-      alert(`${enrollment.student_name} has been accepted successfully! They can now start their lessons.`);
+      alert(`✅ ${enrollment.student_name} has been accepted! They can now start lessons.`);
     } catch (error) {
       console.error('Error accepting student:', error);
       alert('Failed to accept student');
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Button 4: Refuse Student (with reason)
+  // 4. Refuse Student
   const handleRefuseStudent = (enrollment) => {
     setSelectedEnrollment(enrollment);
     setRefusalReason('');
-    setShowRefusalModal(true);
+    setShowRefuseModal(true);
   };
 
   const handleSubmitRefusal = async () => {
     if (!refusalReason.trim()) {
-      alert('Please provide a reason for refusing this student');
+      alert('Please provide a reason for refusal');
       return;
     }
 
     try {
+      setLoading(true);
       const headers = { Authorization: `Bearer ${token}` };
       const formData = new FormData();
-      formData.append('reason', refusalReason.trim());
+      formData.append('reason', refusalReason);
       
       await axios.post(`${API}/manager/enrollments/${selectedEnrollment.id}/refuse`, formData, { headers });
       
-      // Remove from pending list
-      setEnrollments(prev => prev.filter(e => e.id !== selectedEnrollment.id));
+      // Update enrollment status in the list
+      setEnrollments(prev => 
+        prev.map(e => 
+          e.id === selectedEnrollment.id 
+            ? { ...e, enrollment_status: 'rejected' }
+            : e
+        )
+      );
       
-      setShowRefusalModal(false);
+      setShowRefuseModal(false);
       setSelectedEnrollment(null);
       setRefusalReason('');
       
-      alert(`${selectedEnrollment.student_name} has been refused. They have been notified with your reason.`);
+      alert(`❌ ${selectedEnrollment.student_name} has been refused. They will be notified with the reason.`);
     } catch (error) {
       console.error('Error refusing student:', error);
       alert('Failed to refuse student');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const getDocumentStatusBadge = (summary) => {
-    if (summary.total_uploaded === 0) {
-      return <span className="badge bg-secondary">No Documents</span>;
+  const getStatusBadgeClass = (status) => {
+    switch (status) {
+      case 'pending_documents':
+        return 'bg-warning text-dark';
+      case 'pending_approval':
+        return 'bg-info text-white';
+      case 'approved':
+        return 'bg-success text-white';
+      case 'rejected':
+        return 'bg-danger text-white';
+      default:
+        return 'bg-secondary text-white';
     }
-    if (summary.total_uploaded < summary.total_required) {
-      return <span className="badge bg-warning">Incomplete ({summary.total_uploaded}/{summary.total_required})</span>;
-    }
-    if (summary.ready_for_decision) {
-      return <span className="badge bg-info">Ready for Review</span>;
-    }
-    return <span className="badge bg-success">Complete ({summary.total_uploaded}/{summary.total_required})</span>;
   };
 
-  if (loading) {
+  const getDocumentIcon = (docType) => {
+    switch (docType) {
+      case 'profile_photo':
+        return 'fas fa-user-circle';
+      case 'id_card':
+        return 'fas fa-id-card';
+      case 'medical_certificate':
+        return 'fas fa-notes-medical';
+      case 'residence_certificate':
+        return 'fas fa-home';
+      default:
+        return 'fas fa-file';
+    }
+  };
+
+  const getDocumentName = (docType) => {
+    const names = {
+      profile_photo: 'Profile Photo',
+      id_card: 'ID Card',
+      medical_certificate: 'Medical Certificate',
+      residence_certificate: 'Residence Certificate'
+    };
+    return names[docType] || docType.replace('_', ' ').toUpperCase();
+  };
+
+  if (loading && !schoolData) {
     return (
-      <div className="d-flex justify-content-center align-items-center" style={{ height: '400px' }}>
+      <div className="manager-dashboard-loading text-center py-5">
         <div className="spinner-border text-primary" role="status">
           <span className="visually-hidden">Loading...</span>
         </div>
+        <p className="mt-3">Loading your dashboard...</p>
       </div>
     );
   }
 
-  return (
-    <div className="manager-dashboard">
-      <div className="container mt-4">
-        <div className="row">
-          <div className="col-12">
-            <div className="d-flex justify-content-between align-items-center mb-4">
-              <h2 className="fw-bold">Manager Dashboard - New Approval System</h2>
-              <button onClick={fetchPendingEnrollments} className="btn btn-outline-primary">
-                <i className="fas fa-sync-alt me-2"></i>Refresh
-              </button>
-            </div>
+  if (error) {
+    return (
+      <div className="alert alert-danger m-4">
+        <h4>Error Loading Dashboard</h4>
+        <p>{error}</p>
+        <button onClick={fetchManagerData} className="btn btn-outline-danger">
+          Try Again
+        </button>
+      </div>
+    );
+  }
 
-            {error && (
-              <div className="alert alert-danger" role="alert">
-                {error}
+  const pendingApprovals = enrollments.filter(e => e.enrollment_status === 'pending_approval');
+
+  return (
+    <div className="manager-dashboard pt-5 mt-5">
+      <div className="container-fluid">
+        {/* Header */}
+        <div className="dashboard-header mb-4">
+          <div className="row align-items-center">
+            <div className="col-lg-8">
+              <h1 className="display-5 fw-bold mb-2">
+                Manager Dashboard 🏫
+              </h1>
+              <p className="lead text-muted">
+                {schoolData?.name || 'Driving School'} - Manage your students and teachers
+              </p>
+            </div>
+            <div className="col-lg-4 text-lg-end">
+              <div className="dashboard-stats">
+                <div className="stat-item">
+                  <div className="stat-number display-6 fw-bold text-warning">
+                    {pendingApprovals.length}
+                  </div>
+                  <div className="stat-label text-muted">Pending Approvals</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Quick Stats Cards */}
+        <div className="row g-4 mb-4">
+          <div className="col-lg-3 col-md-6">
+            <div className="card border-0 shadow-sm h-100">
+              <div className="card-body text-center">
+                <div className="icon-circle bg-primary bg-opacity-10 text-primary rounded-circle d-inline-flex align-items-center justify-content-center mb-3" style={{width: '60px', height: '60px'}}>
+                  <i className="fas fa-users fa-2x"></i>
+                </div>
+                <h3 className="fw-bold">{enrollments.length}</h3>
+                <p className="text-muted mb-0">Total Students</p>
+              </div>
+            </div>
+          </div>
+          
+          <div className="col-lg-3 col-md-6">
+            <div className="card border-0 shadow-sm h-100">
+              <div className="card-body text-center">
+                <div className="icon-circle bg-warning bg-opacity-10 text-warning rounded-circle d-inline-flex align-items-center justify-content-center mb-3" style={{width: '60px', height: '60px'}}>
+                  <i className="fas fa-clock fa-2x"></i>
+                </div>
+                <h3 className="fw-bold">{pendingApprovals.length}</h3>
+                <p className="text-muted mb-0">Pending Approval</p>
+              </div>
+            </div>
+          </div>
+          
+          <div className="col-lg-3 col-md-6">
+            <div className="card border-0 shadow-sm h-100">
+              <div className="card-body text-center">
+                <div className="icon-circle bg-success bg-opacity-10 text-success rounded-circle d-inline-flex align-items-center justify-content-center mb-3" style={{width: '60px', height: '60px'}}>
+                  <i className="fas fa-check-circle fa-2x"></i>
+                </div>
+                <h3 className="fw-bold">
+                  {enrollments.filter(e => e.enrollment_status === 'approved').length}
+                </h3>
+                <p className="text-muted mb-0">Approved Students</p>
+              </div>
+            </div>
+          </div>
+          
+          <div className="col-lg-3 col-md-6">
+            <div className="card border-0 shadow-sm h-100">
+              <div className="card-body text-center">
+                <div className="icon-circle bg-info bg-opacity-10 text-info rounded-circle d-inline-flex align-items-center justify-content-center mb-3" style={{width: '60px', height: '60px'}}>
+                  <i className="fas fa-chalkboard-teacher fa-2x"></i>
+                </div>
+                <h3 className="fw-bold">{teachers.length}</h3>
+                <p className="text-muted mb-0">Teachers</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Main Content - Student Approvals */}
+        <div className="row g-4">
+          <div className="col-12">
+            
+            {/* Pending Approvals Alert */}
+            {pendingApprovals.length > 0 && (
+              <div className="alert alert-warning d-flex align-items-center mb-4" role="alert">
+                <i className="fas fa-exclamation-triangle fa-2x me-3"></i>
+                <div className="flex-grow-1">
+                  <h5 className="alert-heading mb-1">⚠️ Action Required!</h5>
+                  <p className="mb-0">
+                    You have <strong>{pendingApprovals.length}</strong> student(s) waiting for approval. 
+                    Review their documents and decide to accept or refuse their enrollment.
+                  </p>
+                </div>
               </div>
             )}
 
-            {/* NEW APPROVAL SYSTEM: Main Content */}
-            <div className="card">
-              <div className="card-header bg-primary text-white">
-                <h5 className="card-title mb-0">
-                  <i className="fas fa-users me-2"></i>
-                  Student Approvals ({enrollments.length} pending)
-                </h5>
+            {/* NEW APPROVAL SYSTEM - Student List with 4 Buttons */}
+            <div className="card shadow-sm">
+              <div className="card-header bg-white">
+                <h3 className="card-title fw-bold mb-0">
+                  <i className="fas fa-user-graduate me-2"></i>
+                  Student Enrollment Management
+                </h3>
+                <p className="text-muted mb-0 mt-2">Review documents and manage student enrollments</p>
               </div>
               <div className="card-body">
-                {enrollments.length === 0 ? (
-                  <div className="text-center py-5">
-                    <i className="fas fa-check-circle fa-4x text-success mb-3"></i>
-                    <h4>No Pending Approvals</h4>
-                    <p className="text-muted">All students have been processed. Great job!</p>
-                  </div>
-                ) : (
+                {enrollments.length > 0 ? (
                   <div className="table-responsive">
-                    <table className="table table-hover">
+                    <table className="table table-hover mb-0">
                       <thead className="table-light">
                         <tr>
                           <th>Student</th>
                           <th>Contact</th>
-                          <th>Documents</th>
-                          <th>Days Pending</th>
-                          <th>Actions</th>
+                          <th>Status</th>
+                          <th>Enrolled Date</th>
+                          <th className="text-center">Actions</th>
                         </tr>
                       </thead>
                       <tbody>
                         {enrollments.map((enrollment) => (
                           <tr key={enrollment.id}>
                             <td>
-                              <div>
-                                <div className="fw-bold">{enrollment.student_name}</div>
-                                <small className="text-muted">ID: {enrollment.student_id}</small>
+                              <div className="d-flex align-items-center">
+                                <div className="avatar bg-primary text-white rounded-circle me-3 d-flex align-items-center justify-content-center" style={{width: '40px', height: '40px'}}>
+                                  {enrollment.student_name?.charAt(0) || 'S'}
+                                </div>
+                                <div>
+                                  <div className="fw-bold">{enrollment.student_name}</div>
+                                  <div className="small text-muted">ID: {enrollment.student_id.slice(-8)}</div>
+                                </div>
                               </div>
                             </td>
                             <td>
-                              <div>
-                                <div className="small">{enrollment.student_email}</div>
-                                <div className="small text-muted">{enrollment.student_phone}</div>
+                              <div className="small">
+                                <div><i className="fas fa-envelope me-1"></i> {enrollment.student_email}</div>
+                                {enrollment.student_phone && (
+                                  <div><i className="fas fa-phone me-1"></i> {enrollment.student_phone}</div>
+                                )}
                               </div>
                             </td>
                             <td>
-                              {getDocumentStatusBadge(enrollment.document_summary)}
-                            </td>
-                            <td>
-                              <span className={`badge ${enrollment.days_pending > 7 ? 'bg-danger' : enrollment.days_pending > 3 ? 'bg-warning' : 'bg-success'}`}>
-                                {enrollment.days_pending} days
+                              <span className={`badge ${getStatusBadgeClass(enrollment.enrollment_status)}`}>
+                                {enrollment.enrollment_status?.replace('_', ' ').toUpperCase()}
                               </span>
                             </td>
+                            <td>{new Date(enrollment.created_at).toLocaleDateString()}</td>
                             <td>
-                              <div className="d-flex gap-2 flex-wrap">
-                                {/* NEW APPROVAL SYSTEM: 4 Action Buttons */}
-                                
-                                {/* Button 1: View Student Details */}
+                              <div className="d-flex gap-2 justify-content-center">
+                                {/* 1. View Student Details Button */}
                                 <button
                                   onClick={() => handleViewStudentDetails(enrollment)}
                                   className="btn btn-outline-info btn-sm"
-                                  title="View Student Details"
+                                  title="View student details"
+                                  disabled={loading}
                                 >
-                                  <i className="fas fa-user me-1"></i>Details
+                                  <i className="fas fa-user"></i>
                                 </button>
 
-                                {/* Button 2: View Documents */}
+                                {/* 2. View Documents Button */}
                                 <button
-                                  onClick={() => handleViewStudentDocuments(enrollment)}
+                                  onClick={() => handleViewDocuments(enrollment)}
                                   className="btn btn-outline-secondary btn-sm"
-                                  title="View Uploaded Documents"
+                                  title="View uploaded documents"
+                                  disabled={loading}
                                 >
-                                  <i className="fas fa-file-alt me-1"></i>Documents
+                                  <i className="fas fa-file-alt"></i>
                                 </button>
 
-                                {/* Button 3: Accept */}
-                                <button
-                                  onClick={() => handleAcceptStudent(enrollment)}
-                                  className="btn btn-success btn-sm"
-                                  title="Accept Student - They can start lessons"
-                                  disabled={!enrollment.document_summary.all_uploaded}
-                                >
-                                  <i className="fas fa-check me-1"></i>Accept
-                                </button>
+                                {/* 3. Accept Button (only for pending approval) */}
+                                {enrollment.enrollment_status === 'pending_approval' && (
+                                  <button
+                                    onClick={() => handleAcceptStudent(enrollment)}
+                                    className="btn btn-success btn-sm"
+                                    title="Accept this student"
+                                    disabled={loading}
+                                  >
+                                    <i className="fas fa-check"></i>
+                                  </button>
+                                )}
 
-                                {/* Button 4: Refuse */}
-                                <button
-                                  onClick={() => handleRefuseStudent(enrollment)}
-                                  className="btn btn-danger btn-sm"
-                                  title="Refuse Student with Reason"
-                                >
-                                  <i className="fas fa-times me-1"></i>Refuse
-                                </button>
+                                {/* 4. Refuse Button (only for pending approval) */}
+                                {enrollment.enrollment_status === 'pending_approval' && (
+                                  <button
+                                    onClick={() => handleRefuseStudent(enrollment)}
+                                    className="btn btn-danger btn-sm"
+                                    title="Refuse this student"
+                                    disabled={loading}
+                                  >
+                                    <i className="fas fa-times"></i>
+                                  </button>
+                                )}
+
+                                {/* Show status for already processed students */}
+                                {enrollment.enrollment_status === 'approved' && (
+                                  <span className="badge bg-success">
+                                    ✅ Accepted
+                                  </span>
+                                )}
+
+                                {enrollment.enrollment_status === 'rejected' && (
+                                  <span className="badge bg-danger">
+                                    ❌ Refused
+                                  </span>
+                                )}
                               </div>
                             </td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
+                  </div>
+                ) : (
+                  <div className="text-center py-5">
+                    <i className="fas fa-user-graduate fa-4x text-muted mb-4"></i>
+                    <h5 className="fw-bold mb-3">No students enrolled yet</h5>
+                    <p className="text-muted">Students will appear here when they enroll in your driving school.</p>
                   </div>
                 )}
               </div>
@@ -267,89 +453,72 @@ const NewManagerDashboard = ({ user, token }) => {
         </div>
       </div>
 
-      {/* NEW APPROVAL SYSTEM: Modals */}
-
       {/* Student Details Modal */}
-      {showStudentDetailsModal && studentDetails && (
-        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+      {showStudentModal && studentDetails && (
+        <div className="modal show d-block" style={{backgroundColor: 'rgba(0,0,0,0.5)'}}>
           <div className="modal-dialog modal-lg">
             <div className="modal-content">
-              <div className="modal-header bg-info text-white">
+              <div className="modal-header">
                 <h5 className="modal-title">
-                  <i className="fas fa-user me-2"></i>Student Details
+                  <i className="fas fa-user me-2"></i>
+                  Student Details
                 </h5>
                 <button 
                   type="button" 
-                  className="btn-close btn-close-white" 
-                  onClick={() => setShowStudentDetailsModal(false)}
+                  className="btn-close" 
+                  onClick={() => setShowStudentModal(false)}
                 ></button>
               </div>
               <div className="modal-body">
-                <div className="row">
+                <div className="row g-4">
                   <div className="col-md-6">
-                    <h6 className="fw-bold text-primary">Personal Information</h6>
-                    <table className="table table-sm">
-                      <tbody>
-                        <tr>
-                          <td className="fw-bold">Full Name:</td>
-                          <td>{studentDetails.student.first_name} {studentDetails.student.last_name}</td>
-                        </tr>
-                        <tr>
-                          <td className="fw-bold">Email:</td>
-                          <td>{studentDetails.student.email}</td>
-                        </tr>
-                        <tr>
-                          <td className="fw-bold">Phone:</td>
-                          <td>{studentDetails.student.phone || 'Not provided'}</td>
-                        </tr>
-                        <tr>
-                          <td className="fw-bold">Address:</td>
-                          <td>{studentDetails.student.address || 'Not provided'}</td>
-                        </tr>
-                        <tr>
-                          <td className="fw-bold">Date of Birth:</td>
-                          <td>{studentDetails.student.date_of_birth || 'Not provided'}</td>
-                        </tr>
-                        <tr>
-                          <td className="fw-bold">Gender:</td>
-                          <td className="text-capitalize">{studentDetails.student.gender || 'Not specified'}</td>
-                        </tr>
-                      </tbody>
-                    </table>
+                    <h6 className="fw-bold text-primary mb-3">Personal Information</h6>
+                    <div className="info-group">
+                      <div className="info-item mb-2">
+                        <strong>Name:</strong> {studentDetails.student.first_name} {studentDetails.student.last_name}
+                      </div>
+                      <div className="info-item mb-2">
+                        <strong>Email:</strong> {studentDetails.student.email}
+                      </div>
+                      <div className="info-item mb-2">
+                        <strong>Phone:</strong> {studentDetails.student.phone || 'N/A'}
+                      </div>
+                      <div className="info-item mb-2">
+                        <strong>Address:</strong> {studentDetails.student.address || 'N/A'}
+                      </div>
+                      <div className="info-item mb-2">
+                        <strong>Date of Birth:</strong> {studentDetails.student.date_of_birth || 'N/A'}
+                      </div>
+                      <div className="info-item mb-2">
+                        <strong>Gender:</strong> {studentDetails.student.gender || 'N/A'}
+                      </div>
+                    </div>
                   </div>
                   <div className="col-md-6">
-                    <h6 className="fw-bold text-primary">Enrollment Information</h6>
-                    <table className="table table-sm">
-                      <tbody>
-                        <tr>
-                          <td className="fw-bold">School:</td>
-                          <td>{studentDetails.school_name}</td>
-                        </tr>
-                        <tr>
-                          <td className="fw-bold">Status:</td>
-                          <td>
-                            <span className="badge bg-warning">
-                              {studentDetails.enrollment.enrollment_status.replace('_', ' ').toUpperCase()}
-                            </span>
-                          </td>
-                        </tr>
-                        <tr>
-                          <td className="fw-bold">Applied:</td>
-                          <td>{new Date(studentDetails.enrollment.created_at).toLocaleDateString()}</td>
-                        </tr>
-                      </tbody>
-                    </table>
+                    <h6 className="fw-bold text-primary mb-3">Enrollment Information</h6>
+                    <div className="info-group">
+                      <div className="info-item mb-2">
+                        <strong>Status:</strong> 
+                        <span className={`badge ms-2 ${getStatusBadgeClass(studentDetails.enrollment.enrollment_status)}`}>
+                          {studentDetails.enrollment.enrollment_status?.replace('_', ' ').toUpperCase()}
+                        </span>
+                      </div>
+                      <div className="info-item mb-2">
+                        <strong>Enrolled:</strong> {new Date(studentDetails.enrollment.created_at).toLocaleDateString()}
+                      </div>
+                      {studentDetails.enrollment.approved_at && (
+                        <div className="info-item mb-2">
+                          <strong>Approved:</strong> {new Date(studentDetails.enrollment.approved_at).toLocaleDateString()}
+                        </div>
+                      )}
+                    </div>
 
-                    <h6 className="fw-bold text-primary mt-3">Document Status</h6>
-                    <div className="list-group list-group-flush">
+                    <h6 className="fw-bold text-primary mb-3 mt-4">Document Status</h6>
+                    <div className="documents-summary">
                       {Object.entries(studentDetails.documents).map(([docType, docInfo]) => (
-                        <div key={docType} className="list-group-item d-flex justify-content-between align-items-center">
-                          <span className="text-capitalize">{docType.replace('_', ' ')}</span>
-                          <span className={`badge ${
-                            docInfo.status === 'accepted' ? 'bg-success' : 
-                            docInfo.status === 'refused' ? 'bg-danger' : 
-                            docInfo.status === 'pending' ? 'bg-warning' : 'bg-secondary'
-                          }`}>
+                        <div key={docType} className="d-flex justify-content-between align-items-center mb-2">
+                          <span>{getDocumentName(docType)}</span>
+                          <span className={`badge ${docInfo.status === 'accepted' ? 'bg-success' : docInfo.status === 'pending' ? 'bg-warning text-dark' : docInfo.status === 'not_uploaded' ? 'bg-secondary' : 'bg-danger'}`}>
                             {docInfo.status === 'not_uploaded' ? 'Not Uploaded' : docInfo.status.toUpperCase()}
                           </span>
                         </div>
@@ -362,181 +531,193 @@ const NewManagerDashboard = ({ user, token }) => {
                 <button 
                   type="button" 
                   className="btn btn-secondary" 
-                  onClick={() => setShowStudentDetailsModal(false)}
+                  onClick={() => setShowStudentModal(false)}
                 >
                   Close
                 </button>
-                <button 
-                  type="button" 
-                  className="btn btn-info" 
-                  onClick={() => {
-                    setShowStudentDetailsModal(false);
-                    handleViewStudentDocuments(selectedEnrollment);
-                  }}
-                >
-                  <i className="fas fa-file-alt me-2"></i>View Documents
-                </button>
+                {selectedStudent?.enrollment_status === 'pending_approval' && (
+                  <>
+                    <button 
+                      type="button" 
+                      className="btn btn-success" 
+                      onClick={() => {
+                        setShowStudentModal(false);
+                        handleAcceptStudent(selectedStudent);
+                      }}
+                    >
+                      <i className="fas fa-check me-2"></i>
+                      Accept Student
+                    </button>
+                    <button 
+                      type="button" 
+                      className="btn btn-danger" 
+                      onClick={() => {
+                        setShowStudentModal(false);
+                        handleRefuseStudent(selectedStudent);
+                      }}
+                    >
+                      <i className="fas fa-times me-2"></i>
+                      Refuse Student
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Student Documents Modal */}
-      {showStudentDocumentsModal && studentDocuments && (
-        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+      {/* Documents Modal */}
+      {showDocumentsModal && studentDocuments && (
+        <div className="modal show d-block" style={{backgroundColor: 'rgba(0,0,0,0.5)'}}>
           <div className="modal-dialog modal-xl">
             <div className="modal-content">
-              <div className="modal-header bg-secondary text-white">
+              <div className="modal-header">
                 <h5 className="modal-title">
                   <i className="fas fa-file-alt me-2"></i>
-                  Documents for {studentDocuments.student.name}
+                  Student Documents - {studentDocuments.student_info.name}
                 </h5>
                 <button 
                   type="button" 
-                  className="btn-close btn-close-white" 
-                  onClick={() => setShowStudentDocumentsModal(false)}
+                  className="btn-close" 
+                  onClick={() => setShowDocumentsModal(false)}
                 ></button>
               </div>
               <div className="modal-body">
-                <div className="row">
-                  {studentDocuments.documents.map((doc, index) => (
-                    <div key={index} className="col-md-6 col-lg-4 mb-4">
-                      <div className="card h-100">
+                <div className="row g-4">
+                  {studentDocuments.documents.map((document) => (
+                    <div key={document.id} className="col-md-6">
+                      <div className="card border">
                         <div className="card-header d-flex justify-content-between align-items-center">
-                          <h6 className="card-title mb-0">{doc.document_type_display}</h6>
-                          <span className={`badge ${
-                            doc.status === 'accepted' ? 'bg-success' : 
-                            doc.status === 'refused' ? 'bg-danger' : 
-                            doc.status === 'pending' ? 'bg-warning' : 'bg-secondary'
-                          }`}>
-                            {doc.status === 'not_uploaded' ? 'Missing' : doc.status.toUpperCase()}
+                          <div className="d-flex align-items-center">
+                            <i className={`${getDocumentIcon(document.document_type)} me-2 text-primary`}></i>
+                            <strong>{getDocumentName(document.document_type)}</strong>
+                          </div>
+                          <span className={`badge ${document.status === 'accepted' ? 'bg-success' : document.status === 'pending' ? 'bg-warning text-dark' : 'bg-danger'}`}>
+                            {document.status.toUpperCase()}
                           </span>
                         </div>
                         <div className="card-body">
-                          {doc.file_url ? (
-                            <div>
-                              <div className="text-center mb-3">
-                                {doc.file_url.match(/\.(jpg|jpeg|png|gif)$/i) ? (
-                                  <img 
-                                    src={doc.file_url} 
-                                    alt={doc.document_type_display}
-                                    className="img-fluid rounded"
-                                    style={{ maxHeight: '200px', objectFit: 'cover' }}
-                                  />
-                                ) : (
-                                  <div className="bg-light p-4 rounded text-center">
-                                    <i className="fas fa-file fa-3x text-muted mb-2"></i>
-                                    <div className="small text-muted">{doc.file_name}</div>
-                                  </div>
-                                )}
-                              </div>
-                              <div className="small text-muted">
-                                <div><strong>File:</strong> {doc.file_name}</div>
-                                <div><strong>Size:</strong> {(doc.file_size / 1024 / 1024).toFixed(2)} MB</div>
-                                <div><strong>Uploaded:</strong> {new Date(doc.upload_date).toLocaleDateString()}</div>
-                                {doc.refusal_reason && (
-                                  <div className="text-danger mt-2">
-                                    <strong>Refusal Reason:</strong> {doc.refusal_reason}
-                                  </div>
-                                )}
-                              </div>
-                              <div className="mt-3">
-                                <a 
-                                  href={doc.file_url} 
-                                  target="_blank" 
-                                  rel="noopener noreferrer"
-                                  className="btn btn-primary btn-sm w-100"
-                                >
-                                  <i className="fas fa-external-link-alt me-2"></i>View Full Size
-                                </a>
-                              </div>
+                          <div className="document-info mb-3">
+                            <div className="small text-muted mb-1">
+                              <strong>File:</strong> {document.file_name}
                             </div>
-                          ) : (
-                            <div className="text-center text-muted">
-                              <i className="fas fa-exclamation-triangle fa-3x mb-3"></i>
-                              <div>Document not uploaded</div>
+                            <div className="small text-muted mb-1">
+                              <strong>Uploaded:</strong> {new Date(document.upload_date).toLocaleDateString()}
+                            </div>
+                            <div className="small text-muted mb-1">
+                              <strong>Size:</strong> {(document.file_size / 1024 / 1024).toFixed(2)} MB
+                            </div>
+                          </div>
+
+                          {document.refusal_reason && (
+                            <div className="alert alert-danger py-2">
+                              <small><strong>Refusal Reason:</strong> {document.refusal_reason}</small>
                             </div>
                           )}
+
+                          <div className="d-flex gap-2">
+                            <a
+                              href={document.file_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="btn btn-outline-primary btn-sm flex-fill"
+                            >
+                              <i className="fas fa-eye me-1"></i>
+                              View Document
+                            </a>
+                          </div>
                         </div>
                       </div>
                     </div>
                   ))}
                 </div>
+
+                {studentDocuments.documents.length === 0 && (
+                  <div className="text-center py-5">
+                    <i className="fas fa-file-upload fa-4x text-muted mb-3"></i>
+                    <h5 className="text-muted">No documents uploaded yet</h5>
+                  </div>
+                )}
               </div>
               <div className="modal-footer">
                 <button 
                   type="button" 
                   className="btn btn-secondary" 
-                  onClick={() => setShowStudentDocumentsModal(false)}
+                  onClick={() => setShowDocumentsModal(false)}
                 >
                   Close
                 </button>
-                <div className="ms-auto">
-                  <button 
-                    type="button" 
-                    className="btn btn-success me-2" 
-                    onClick={() => {
-                      setShowStudentDocumentsModal(false);
-                      handleAcceptStudent(selectedEnrollment);
-                    }}
-                    disabled={!selectedEnrollment?.document_summary?.all_uploaded}
-                  >
-                    <i className="fas fa-check me-2"></i>Accept Student
-                  </button>
-                  <button 
-                    type="button" 
-                    className="btn btn-danger" 
-                    onClick={() => {
-                      setShowStudentDocumentsModal(false);
-                      handleRefuseStudent(selectedEnrollment);
-                    }}
-                  >
-                    <i className="fas fa-times me-2"></i>Refuse Student
-                  </button>
-                </div>
+                {selectedStudent?.enrollment_status === 'pending_approval' && (
+                  <>
+                    <button 
+                      type="button" 
+                      className="btn btn-success" 
+                      onClick={() => {
+                        setShowDocumentsModal(false);
+                        handleAcceptStudent(selectedStudent);
+                      }}
+                    >
+                      <i className="fas fa-check me-2"></i>
+                      Accept Student
+                    </button>
+                    <button 
+                      type="button" 
+                      className="btn btn-danger" 
+                      onClick={() => {
+                        setShowDocumentsModal(false);
+                        handleRefuseStudent(selectedStudent);
+                      }}
+                    >
+                      <i className="fas fa-times me-2"></i>
+                      Refuse Student
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Refusal Modal */}
-      {showRefusalModal && selectedEnrollment && (
-        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+      {/* Refuse Modal */}
+      {showRefuseModal && selectedEnrollment && (
+        <div className="modal show d-block" style={{backgroundColor: 'rgba(0,0,0,0.5)'}}>
           <div className="modal-dialog">
             <div className="modal-content">
-              <div className="modal-header bg-danger text-white">
-                <h5 className="modal-title">
-                  <i className="fas fa-times me-2"></i>Refuse Student Enrollment
+              <div className="modal-header">
+                <h5 className="modal-title text-danger">
+                  <i className="fas fa-times-circle me-2"></i>
+                  Refuse Student Enrollment
                 </h5>
                 <button 
                   type="button" 
-                  className="btn-close btn-close-white" 
-                  onClick={() => setShowRefusalModal(false)}
+                  className="btn-close" 
+                  onClick={() => setShowRefuseModal(false)}
                 ></button>
               </div>
               <div className="modal-body">
                 <div className="alert alert-warning">
-                  <strong>Warning:</strong> You are about to refuse <strong>{selectedEnrollment.student_name}</strong>'s enrollment. 
-                  This action will notify the student and they will not be able to start lessons.
+                  <i className="fas fa-exclamation-triangle me-2"></i>
+                  <strong>You are about to refuse {selectedEnrollment.student_name}'s enrollment.</strong>
+                  <br />
+                  <small>The student will be notified with your reason. They can reapply later.</small>
                 </div>
                 
                 <div className="mb-3">
-                  <label htmlFor="refusalReason" className="form-label">
-                    <strong>Reason for Refusal:</strong> <span className="text-danger">*</span>
+                  <label className="form-label">
+                    <strong>Reason for refusal <span className="text-danger">*</span></strong>
                   </label>
                   <textarea
-                    id="refusalReason"
                     className="form-control"
                     rows="4"
                     value={refusalReason}
                     onChange={(e) => setRefusalReason(e.target.value)}
-                    placeholder="Please provide a detailed reason for refusing this student's enrollment. This will be sent to the student."
+                    placeholder="Please provide a clear reason why this enrollment is being refused..."
                     required
                   />
                   <div className="form-text">
-                    This reason will be sent to the student, so please be professional and specific.
+                    This reason will be shown to the student. Be professional and specific.
                   </div>
                 </div>
               </div>
@@ -544,7 +725,7 @@ const NewManagerDashboard = ({ user, token }) => {
                 <button 
                   type="button" 
                   className="btn btn-secondary" 
-                  onClick={() => setShowRefusalModal(false)}
+                  onClick={() => setShowRefuseModal(false)}
                 >
                   Cancel
                 </button>
@@ -552,9 +733,10 @@ const NewManagerDashboard = ({ user, token }) => {
                   type="button" 
                   className="btn btn-danger" 
                   onClick={handleSubmitRefusal}
-                  disabled={!refusalReason.trim()}
+                  disabled={!refusalReason.trim() || loading}
                 >
-                  <i className="fas fa-times me-2"></i>Refuse Student
+                  <i className="fas fa-times me-2"></i>
+                  Refuse Student
                 </button>
               </div>
             </div>
